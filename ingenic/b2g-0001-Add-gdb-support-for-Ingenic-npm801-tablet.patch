@@ -1,0 +1,25 @@
+From c970853b53a8f83bec1b0a8410f1cc6a294314bd Mon Sep 17 00:00:00 2001
+From: Lazar Trsic <Lazar.Trsic@imgtec.com>
+Date: Tue, 27 Jan 2015 14:02:42 +0100
+Subject: [PATCH 2/2] Add gdb support for Ingenic npm801 tablet.
+
+---
+ run-gdb.sh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/run-gdb.sh b/run-gdb.sh
+index 87c5f86..bc2ef83 100755
+--- a/run-gdb.sh
++++ b/run-gdb.sh
+@@ -19,7 +19,7 @@ case $DEVICE in
+         TARGET_ARCH=x86
+         TARGET_TRIPLE=i686-linux-android
+         ;;
+-    generic_mips)
++    generic_mips | npm801)
+         TARGET_ARCH=mips
+         TARGET_TRIPLE=mipsel-linux-android
+         ;;
+-- 
+2.2.2
+

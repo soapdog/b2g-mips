@@ -1,0 +1,32 @@
+From 9b0b66db126e4d981151a75965d63e4adb8088b7 Mon Sep 17 00:00:00 2001
+From: Lazar Trsic <Lazar.Trsic@imgetc.com>
+Date: Tue, 27 Jan 2015 16:07:46 +0100
+Subject: [PATCH] [MIPS] Workaround for long command line.
+
+Emulation breaks due to long kernel command line.
+Not a proper fix, need further debugging.
+---
+ vl-android.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/vl-android.c b/vl-android.c
+index 0ae28cc..3bf7150 100644
+--- a/vl-android.c
++++ b/vl-android.c
+@@ -4054,11 +4054,13 @@ int main(int argc, char **argv, char **envp)
+             snprintf(buf, sizeof(buf), " android.ifrename=eth%d:rmnet%s",
+                      index, (nd->name + 6));
+             stralloc_add_str(kernel_params, buf);
++#ifndef TARGET_MIPS
+         } else if (!strncmp(nd->name, "wlan.", 5)) {
+             char buf[32];
+             snprintf(buf, sizeof(buf), " android.ifrename=eth%d:wlan%s",
+                      index, (nd->name + 5));
+             stralloc_add_str(kernel_params, buf);
++#endif
+         }
+     }
+     net_client_check();
+-- 
+2.2.2
+

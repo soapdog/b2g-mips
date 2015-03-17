@@ -1,0 +1,29 @@
+From 4f39da93bc89e6de94ceae2450c13c7a6e372326 Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <milan.jelisavcic@imgtec.com>
+Date: Tue, 27 Jan 2015 19:45:15 +0100
+Subject: [PATCH] [MIPS] Add WiFi support for npm801.
+
+---
+ BoardConfig.mk | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/BoardConfig.mk b/BoardConfig.mk
+index 62ff1ff..b251261 100644
+--- a/BoardConfig.mk
++++ b/BoardConfig.mk
+@@ -84,6 +84,12 @@ BOARD_HAVE_BLUETOOTH_BCM    := true
+ BOARD_HAVE_BLUETOOTH        := true
+ BOARD_BT_MODULE             := BCM4330
+ BT_BCM4330                  := true
++
++WIFI_DRIVER_FW_PATH_PARAM   := "/sys/module/bcmdhd/parameters/firmware_path"
++WIFI_TEST_INTERFACE := "sta"
++WIFI_DRIVER_FW_PATH_STA := "/system/lib/wifi/firmware/iw8101/fw_bcmdhd.bin"
++WIFI_DRIVER_FW_PATH_AP := "ap"
++WIFI_DRIVER_FW_PATH_P2P := "p2p"
+ endif
+ 
+ TARGET_RECOVERY_UI_LIB := librecovery_ui_npm801
+-- 
+2.2.2
+

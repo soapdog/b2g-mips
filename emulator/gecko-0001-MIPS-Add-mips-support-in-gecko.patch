@@ -1,0 +1,63 @@
+From 17f71531e7654075f688b6ecec55f4c677092bec Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <Milan.Jelisavcic@imgtec.com>
+Date: Mon, 26 Jan 2015 15:39:10 +0100
+Subject: [PATCH] [MIPS] Add mips support in gecko.
+
+---
+ configure.in | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/configure.in b/configure.in
+index e53ad3e..ab7aaa4 100644
+--- a/configure.in
++++ b/configure.in
+@@ -225,6 +225,9 @@ if test -n "$gonkdir" ; then
+     arm)
+         ARCH_DIR=arch-arm
+         ;;
++    mips)
++        ARCH_DIR=arch-mips
++        ;;
+     i?86)
+         ARCH_DIR=arch-x86
+         ;;
+@@ -1442,7 +1445,7 @@ if test "$GNU_CC"; then
+        # Don't use -Wcast-align with ICC or clang
+        case "$CPU_ARCH" in
+            # And don't use it on hppa, ia64, sparc, arm, since it's noisy there
+-           hppa | ia64 | sparc | arm)
++           hppa | ia64 | sparc | arm | mips)
+            ;;
+            *)
+         _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Wcast-align"
+@@ -1512,7 +1515,7 @@ if test "$GNU_CXX"; then
+        # Don't use -Wcast-align with ICC or clang
+        case "$CPU_ARCH" in
+            # And don't use it on hppa, ia64, sparc, arm, since it's noisy there
+-           hppa | ia64 | sparc | arm)
++           hppa | ia64 | sparc | arm | mips )
+            ;;
+            *)
+         _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Wcast-align"
+@@ -5048,6 +5051,9 @@ x86_64 | arm | x86 | ppc* | ia64)
+ # unsupported arch for webrtc
+     MOZ_WEBRTC=
+     ;;
++mips*)
++    WEBRTC_TARGET_ARCH=mips
++    ;;
+ 
+ esac
+ 
+@@ -7999,7 +8005,7 @@ if test "${OS_TARGET}" = "WINNT" -o \
+         "${MOZ_WIDGET_TOOLKIT}" = "gtk2" -o \
+         "${MOZ_WIDGET_TOOLKIT}" = "gtk3"; then
+     case "${target_cpu}" in
+-    i*86*|x86_64|arm)
++    i*86*|x86_64|arm|mips)
+         MOZ_ENABLE_SKIA=1
+         ;;
+     *)
+-- 
+2.2.2
+

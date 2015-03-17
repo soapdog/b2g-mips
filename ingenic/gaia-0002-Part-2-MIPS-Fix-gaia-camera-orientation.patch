@@ -1,0 +1,25 @@
+From e72d2d624c10a6548d04654f2de7da98d5970f59 Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <milan.jelisavcic@imgtec.com>
+Date: Tue, 27 Jan 2015 10:55:52 +0100
+Subject: [PATCH] [MIPS] Fix gaia camera orientation.
+
+---
+ apps/camera/js/lib/orientation.js |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/apps/camera/js/lib/orientation.js b/apps/camera/js/lib/orientation.js
+index 6e4f0d9..f49c885 100644
+--- a/apps/camera/js/lib/orientation.js
++++ b/apps/camera/js/lib/orientation.js
+@@ -30,7 +30,7 @@ define(function(require, exports, module) {
+   }
+ 
+   function lock() {
+-    screen.mozLockOrientation('portrait-primary');
++    screen.mozLockOrientation('default');
+     listener.start();
+   }
+ 
+-- 
+1.7.9.5
+

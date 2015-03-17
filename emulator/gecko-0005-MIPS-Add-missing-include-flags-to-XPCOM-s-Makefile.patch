@@ -1,0 +1,26 @@
+From 1d3383d8bdf40cd16e69d021f7d1d5346817d123 Mon Sep 17 00:00:00 2001
+From: Lazar Trsic <Lazar.Trsic@imgtec.com>
+Date: Mon, 26 Jan 2015 16:33:45 +0100
+Subject: [PATCH] [MIPS] Add missing include flags to XPCOM's Makefile.
+
+---
+ xpcom/reflect/xptcall/src/md/unix/Makefile.in | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/xpcom/reflect/xptcall/src/md/unix/Makefile.in b/xpcom/reflect/xptcall/src/md/unix/Makefile.in
+index e87e11a..612a084 100644
+--- a/xpcom/reflect/xptcall/src/md/unix/Makefile.in
++++ b/xpcom/reflect/xptcall/src/md/unix/Makefile.in
+@@ -38,6 +38,9 @@ endif
+ ifeq ($(OS_ARCH),Linux)
+ ifneq (,$(findstring mips, $(OS_TEST)))
+ ASFLAGS		+= -I$(DIST)/include
++ifeq ($(OS_TARGET),Android)
++ASFLAGS         += -I$(topsrcdir)/../bionic/libc/kernel/arch-mips -I$(topsrcdir)/../bionic/libc/arch-mips/include
++endif
+ endif
+ endif
+ 
+-- 
+2.2.2
+

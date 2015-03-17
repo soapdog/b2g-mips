@@ -1,0 +1,39 @@
+From 3d7813e4bda0dbc695d1d40e0a2b6dc19db06399 Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <milan.jelisavcic@imgtec.com>
+Date: Tue, 27 Jan 2015 21:12:56 +0100
+Subject: [PATCH] [MIPS] Fix disk_preparing.sh bug.
+
+disk_preparing.sh rewrites data partition on each boot due to lack of
+Package Manager in Firefox OS.
+---
+ config/disk_preparing.sh | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/config/disk_preparing.sh b/config/disk_preparing.sh
+index f2edd08..d0edcbd 100755
+--- a/config/disk_preparing.sh
++++ b/config/disk_preparing.sh
+@@ -3,7 +3,7 @@
+ 
+ /system/bin/mount -t ext4 -o noatime,nosuid,nodev,nomblk_io_submit,errors=panic /dev/block/nddata /data
+ 
+-if [ ! -f /data/system/packages.list ]; then
++if [ ! -f /data/oneshot_disk_preparing_done ]; then
+ 	#######################################################################
+ 	echo "Preparing cache partation"
+ 	/system/bin/umount /cache
+@@ -20,6 +20,11 @@ if [ ! -f /data/system/packages.list ]; then
+ 	#######################################################################
+ 
+ 	/system/bin/sync
++
++	/system/bin/mount -t ext4 -o noatime,nosuid,nodev,nomblk_io_submit,errors=panic /dev/block/nddata /data
++	echo "First time disk_preparing.sh done." > /data/oneshot_disk_preparing_done
++	/system/bin/umount /data
++
+ else
+ 	/system/bin/umount /data
+ fi
+-- 
+2.2.2
+

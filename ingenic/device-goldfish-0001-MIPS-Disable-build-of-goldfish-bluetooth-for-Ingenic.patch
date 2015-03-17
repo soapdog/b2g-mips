@@ -1,0 +1,30 @@
+From ba0888394b7070cec061cc361201c7d4955e8ed2 Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <Milan.Jelisavcic@imgtec.com>
+Date: Tue, 27 Jan 2015 14:09:32 +0100
+Subject: [PATCH] [MIPS] Disable build of goldfish bluetooth for Ingenic.
+
+---
+ bluetooth/libbt/Android.mk | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/bluetooth/libbt/Android.mk b/bluetooth/libbt/Android.mk
+index 7390b80..6142a37 100644
+--- a/bluetooth/libbt/Android.mk
++++ b/bluetooth/libbt/Android.mk
+@@ -1,6 +1,7 @@
+ LOCAL_PATH := $(call my-dir)
+ 
+ ifneq ($(BOARD_HAVE_BLUETOOTH),)
++ifneq ( ,$(filter aosp_arm aosp_x86 aosp_mips generic_arm generic_x86 generic_mips,$(TARGET_PRODUCT)))
+ 
+ include $(CLEAR_VARS)
+ 
+@@ -33,4 +34,5 @@ include $(BUILD_SHARED_LIBRARY)
+ 
+ include $(LOCAL_PATH)/conf/generic/goldfish/Android.mk
+ 
++endif # TARGET_PRODUCT
+ endif # BOARD_HAVE_BLUETOOTH
+-- 
+2.2.2
+

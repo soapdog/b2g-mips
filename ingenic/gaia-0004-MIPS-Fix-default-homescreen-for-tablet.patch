@@ -1,0 +1,89 @@
+From 91fa00e4bef6f0f10a3ed199e9eb56e6ff0b19a9 Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <milan.jelisavcic@imgtec.com>
+Date: Tue, 27 Jan 2015 11:37:19 +0100
+Subject: [PATCH] [MIPS] Fix default homescreen for tablet.
+
+---
+ build/settings.js                    |    2 +-
+ build/test/integration/build.test.js |    2 +-
+ build/test/unit/settings.test.js     |   10 +++++-----
+ 3 files changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/build/settings.js b/build/settings.js
+index efe914c..70cecdb 100644
+--- a/build/settings.js
++++ b/build/settings.js
+@@ -166,7 +166,7 @@ function overrideSettings(settings, config) {
+ 
+ function setHomescreenURL(settings, config) {
+   // 'homescreen' as default value of homescreen.appName
+-  let appName = 'verticalhome';
++  let appName = 'homescreen';
+ 
+   if (typeof(settings['homescreen.appName']) !== 'undefined') {
+     appName = settings['homescreen.appName'];
+diff --git a/build/test/integration/build.test.js b/build/test/integration/build.test.js
+index e69bcd9..3ab0f60 100644
+--- a/build/test/integration/build.test.js
++++ b/build/test/integration/build.test.js
+@@ -561,7 +561,7 @@ suite('Build Integration tests', function() {
+       var installedExtsPath = path.join('profile-debug',
+         'installed-extensions.json');
+       var expectedSettings = {
+-        'homescreen.manifestURL': 'http://verticalhome.gaiamobile.org:8080/manifest.webapp',
++        'homescreen.manifestURL': 'http://homescreen.gaiamobile.org:8080/manifest.webapp',
+         'rocketbar.searchAppURL': 'http://search.gaiamobile.org:8080/index.html'
+       };
+       var expectedUserPrefs = {
+diff --git a/build/test/unit/settings.test.js b/build/test/unit/settings.test.js
+index 4615998..62270c5 100644
+--- a/build/test/unit/settings.test.js
++++ b/build/test/unit/settings.test.js
+@@ -207,7 +207,7 @@ suite('settings.js', function() {
+       config.GAIA_DOMAIN = 'gaiamobile.com';
+       config.GAIA_PORT = ':8080';
+       var settings = {};
+-      var testResult = mockUtils.gaiaManifestURL('verticalhome',
++      var testResult = mockUtils.gaiaManifestURL('homescreen',
+                     config.GAIA_SCHEME, config.GAIA_DOMAIN, config.GAIA_PORT);
+       app.setHomescreenURL(settings, config);
+       assert.equal(settings['homescreen.manifestURL'], testResult);
+@@ -263,7 +263,7 @@ suite('settings.js', function() {
+           'debug.console.enabled': true,
+           'developer.menu.enabled': true,
+           'homescreen.manifestURL': config.GAIA_SCHEME +
+-            'verticalhome.' + config.GAIA_DOMAIN + config.GAIA_PORT +
++            'homescreen.' + config.GAIA_DOMAIN + config.GAIA_PORT +
+             '/manifest.webapp',
+           'rocketbar.searchAppURL': config.GAIA_SCHEME + 'search.' +
+             config.GAIA_DOMAIN + config.GAIA_PORT + '/index.html',
+@@ -293,7 +293,7 @@ suite('settings.js', function() {
+       queue.done(function(result) {
+         assert.deepEqual({
+           'homescreen.manifestURL': config.GAIA_SCHEME +
+-            'verticalhome.' + config.GAIA_DOMAIN + config.GAIA_PORT +
++            'homescreen.' + config.GAIA_DOMAIN + config.GAIA_PORT +
+             '/manifest.webapp',
+           'rocketbar.searchAppURL': config.GAIA_SCHEME + 'search.' +
+             config.GAIA_DOMAIN + config.GAIA_PORT + '/index.html',
+@@ -326,7 +326,7 @@ suite('settings.js', function() {
+       queue.done(function(result) {
+         assert.deepEqual({
+           'homescreen.manifestURL': config.GAIA_SCHEME +
+-            'verticalhome.' + config.GAIA_DOMAIN + config.GAIA_PORT +
++            'homescreen.' + config.GAIA_DOMAIN + config.GAIA_PORT +
+             '/manifest.webapp',
+           'rocketbar.searchAppURL': config.GAIA_SCHEME + 'search.' +
+             config.GAIA_DOMAIN + config.GAIA_PORT + '/index.html',
+@@ -358,7 +358,7 @@ suite('settings.js', function() {
+       queue.done(function(result) {
+         assert.deepEqual({
+           'homescreen.manifestURL': config.GAIA_SCHEME +
+-            'verticalhome.' + config.GAIA_DOMAIN + config.GAIA_PORT +
++            'homescreen.' + config.GAIA_DOMAIN + config.GAIA_PORT +
+             '/manifest.webapp',
+           'rocketbar.searchAppURL': config.GAIA_SCHEME + 'search.' +
+             config.GAIA_DOMAIN + config.GAIA_PORT + '/index.html',
+-- 
+1.7.9.5
+

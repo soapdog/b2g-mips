@@ -1,0 +1,26 @@
+From 70d3f69a4045db2380a825b07f565d24ff8d0d44 Mon Sep 17 00:00:00 2001
+From: Lazar Trsic <lazar.trsic@imgtec.com>
+Date: Tue, 27 Jan 2015 11:07:01 +0100
+Subject: [PATCH] [MIPS] Add Ingenic specific make flags.
+
+---
+ Android.mk |    3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/Android.mk b/Android.mk
+index 0f712e4..6b4af37 100644
+--- a/Android.mk
++++ b/Android.mk
+@@ -17,6 +17,9 @@ include $(BUILD_PREBUILT)
+ # Collect all flags we need to pass to Gaia Makefile
+ GAIA_MAKE_FLAGS :=
+ 
++#ingenic specific make flags
++GAIA_MAKE_FLAGS += GAIA_DISTRIBUTION_DIR=$(GAIA_PATH)/distribution_npm801
++
+ GAIA_PROFILE_INSTALL_PARENT := $(TARGET_OUT_DATA)/local
+ GAIA_APP_INSTALL_PARENT := $(GAIA_PROFILE_INSTALL_PARENT)
+ CLEAN_PROFILE := 0
+-- 
+1.7.9.5
+

@@ -1,0 +1,26 @@
+From dcb397669c989507c6b78cf9560d1c99ddb06fed Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <Milan.Jelisavcic@imgtec.com>
+Date: Mon, 26 Jan 2015 14:59:07 +0100
+Subject: [PATCH] [MIPS] Add support for mips relocation flag.
+
+---
+ linker/linker.cpp | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/linker/linker.cpp b/linker/linker.cpp
+index 7c5165b..1ef2258 100644
+--- a/linker/linker.cpp
++++ b/linker/linker.cpp
+@@ -905,6 +905,9 @@ static int soinfo_relocate(soinfo* si, Elf32_Rel* rel, unsigned count,
+                 case R_386_32:
+                 case R_386_RELATIVE:    /* Dont' care. */
+ #endif /* ANDROID_*_LINKER */
++#if defined(ANDROID_MIPS_LINKER)
++                case R_MIPS_REL32:
++#endif /* ANDROID_MIPS_LINKER */
+                     /* sym_addr was initialized to be zero above or relocation
+                        code below does not care about value of sym_addr.
+                        No need to do anything.  */
+-- 
+2.2.2
+

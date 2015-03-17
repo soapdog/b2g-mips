@@ -1,0 +1,64 @@
+From 05410835d517ef7ec5df3898c88da06b68275875 Mon Sep 17 00:00:00 2001
+From: Shawn Huang <shuang@mozilla.com>
+Date: Tue, 27 Jan 2015 15:49:32 +0100
+Subject: [PATCH] Bug 1033273 - Part 1: Add
+ InitHfpInterface/DeinitHfpinterface. r=btian
+
+---
+ .../bluedroid/hfp-fallback/BluetoothHfpManager.cpp | 26 ++++++++++++++++++++++
+ .../bluedroid/hfp-fallback/BluetoothHfpManager.h   |  2 ++
+ 2 files changed, 28 insertions(+)
+
+diff --git a/dom/bluetooth/bluedroid/hfp-fallback/BluetoothHfpManager.cpp b/dom/bluetooth/bluedroid/hfp-fallback/BluetoothHfpManager.cpp
+index 5b698ca..abef9b4 100644
+--- a/dom/bluetooth/bluedroid/hfp-fallback/BluetoothHfpManager.cpp
++++ b/dom/bluetooth/bluedroid/hfp-fallback/BluetoothHfpManager.cpp
+@@ -146,6 +146,32 @@ BluetoothHfpManager::Init()
+   return true;
+ }
+ 
++// static
++void
++BluetoothHfpManager::InitHfpInterface()
++{
++  MOZ_ASSERT(NS_IsMainThread());
++
++  /**
++   * TODO:
++   *   Implement InitHfpInterface() for applications that want to create SCO
++   *   link without a HFP connection (e.g., VoIP).
++   */
++}
++
++// static
++void
++BluetoothHfpManager::DeinitHfpInterface()
++{
++  MOZ_ASSERT(NS_IsMainThread());
++
++  /**
++   * TODO:
++   *   Implement DeinitHfpInterface() for applications that want to create SCO
++   *   link without a HFP connection (e.g., VoIP).
++   */
++}
++
+ void
+ BluetoothHfpManager::HandleShutdown()
+ {
+diff --git a/dom/bluetooth/bluedroid/hfp-fallback/BluetoothHfpManager.h b/dom/bluetooth/bluedroid/hfp-fallback/BluetoothHfpManager.h
+index 2aaaccd..12ff8a9 100644
+--- a/dom/bluetooth/bluedroid/hfp-fallback/BluetoothHfpManager.h
++++ b/dom/bluetooth/bluedroid/hfp-fallback/BluetoothHfpManager.h
+@@ -30,6 +30,8 @@ public:
+ 
+   static BluetoothHfpManager* Get();
+   virtual ~BluetoothHfpManager() { }
++  static void InitHfpInterface();
++  static void DeinitHfpInterface();
+ 
+   bool ConnectSco();
+   bool DisconnectSco();
+-- 
+2.2.2
+

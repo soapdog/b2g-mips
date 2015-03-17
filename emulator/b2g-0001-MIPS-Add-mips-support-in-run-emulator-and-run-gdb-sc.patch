@@ -1,0 +1,61 @@
+From f232bf2268a4eaa2851fef7660251891ee465104 Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <Milan.Jelisavcic@imgtec.com>
+Date: Mon, 26 Jan 2015 15:23:44 +0100
+Subject: [PATCH] [MIPS] Add mips support in run-emulator and run-gdb scripts.
+
+---
+ run-emulator.sh | 17 ++++++++++++++---
+ run-gdb.sh      |  4 ++++
+ 2 files changed, 18 insertions(+), 3 deletions(-)
+
+diff --git a/run-emulator.sh b/run-emulator.sh
+index 52985d6..638d2b8 100755
+--- a/run-emulator.sh
++++ b/run-emulator.sh
+@@ -18,14 +18,25 @@ if [ x"$GDBSERVER" != x"" ]; then
+     TAIL_ARGS="$TAIL_ARGS -s -S"
+ fi
+ 
+-if [ "$DEVICE" = "generic_x86" ]; then
++
++case "$DEVICE" in
++"generic_x86" )
+     EMULATOR=$TOOLS_PATH/emulator-x86
+     KERNEL=$B2G_HOME/prebuilts/qemu-kernel/x86/kernel-qemu
+-else
++    ;;
++"generic_mips" )
++    EMULATOR=$TOOLS_PATH/emulator-mips
++    KERNEL=$B2G_HOME/prebuilts/qemu-kernel/mips/kernel-qemu
++    TAIL_ARGS="$TAIL_ARGS"
++    ;;
++*)
+     EMULATOR=$TOOLS_PATH/emulator
+     KERNEL=$B2G_HOME/prebuilts/qemu-kernel/arm/kernel-qemu-armv7
+     TAIL_ARGS="$TAIL_ARGS -cpu cortex-a8"
+-fi
++    ;;
++esac
++
++
+ 
+ SDCARD_SIZE=${SDCARD_SIZE:-512M}
+ SDCARD_IMG=${SDCARD_IMG:-${B2G_HOME}/out/target/product/${DEVICE}/sdcard.img}
+diff --git a/run-gdb.sh b/run-gdb.sh
+index 63cf472..87c5f86 100755
+--- a/run-gdb.sh
++++ b/run-gdb.sh
+@@ -19,6 +19,10 @@ case $DEVICE in
+         TARGET_ARCH=x86
+         TARGET_TRIPLE=i686-linux-android
+         ;;
++    generic_mips)
++        TARGET_ARCH=mips
++        TARGET_TRIPLE=mipsel-linux-android
++        ;;
+     *)
+         TARGET_ARCH=arm
+         TARGET_TRIPLE=arm-linux-androideabi
+-- 
+2.2.2
+

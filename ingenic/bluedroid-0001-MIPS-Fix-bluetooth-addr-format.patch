@@ -1,0 +1,32 @@
+From 684cc8ba1be7850fd265e3a57736fd52042994c0 Mon Sep 17 00:00:00 2001
+From: Lazar Trsic <lazar.trsic@imgtec.com>
+Date: Tue, 27 Jan 2015 11:15:00 +0100
+Subject: [PATCH] [MIPS] Fix bluetooth addr format.
+
+---
+ btif/src/btif_util.c |    8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/btif/src/btif_util.c b/btif/src/btif_util.c
+index 636c1bc..c34f2d2 100755
+--- a/btif/src/btif_util.c
++++ b/btif/src/btif_util.c
+@@ -93,11 +93,11 @@ int str2bd(char *str, bt_bdaddr_t *addr)
+ 
+ char *bd2str(const bt_bdaddr_t *bdaddr, bdstr_t *bdstr)
+ {
+-    char *addr = (char *) bdaddr->address;
++    const uint8_t *addr = bdaddr->address;
+ 
+-    sprintf((char*)bdstr, "%02x:%02x:%02x:%02x:%02x:%02x",
+-                       (int)addr[0],(int)addr[1],(int)addr[2],
+-                       (int)addr[3],(int)addr[4],(int)addr[5]);
++    snprintf((char*)bdstr, sizeof(*bdstr), "%02x:%02x:%02x:%02x:%02x:%02x",
++             addr[0], addr[1], addr[2],
++             addr[3], addr[4], addr[5]);
+     return (char *)bdstr;
+ }
+ 
+-- 
+1.7.9.5
+

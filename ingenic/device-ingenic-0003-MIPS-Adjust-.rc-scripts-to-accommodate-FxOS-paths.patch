@@ -1,0 +1,98 @@
+From df2d431146d54691589667f6a297c6d3b0403f0f Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <milan.jelisavcic@imgtec.com>
+Date: Tue, 27 Jan 2015 19:57:11 +0100
+Subject: [PATCH] [MIPS] Adjust .rc scripts to accommodate FxOS paths
+
+---
+ config/fstab.board                                  |  2 +-
+ config/init.board.rc                                | 21 +++------------------
+ config/vold.fstab                                   |  2 +-
+ .../base/core/res/res/xml/storage_list.xml          |  8 +-------
+ 4 files changed, 6 insertions(+), 27 deletions(-)
+
+diff --git a/config/fstab.board b/config/fstab.board
+index 6f19c54..4ce0d4c 100644
+--- a/config/fstab.board
++++ b/config/fstab.board
+@@ -9,4 +9,4 @@
+ #/dev/block/nddata   /data    ext4  noatime,nosuid,nodev,nomblk_io_submit,errors=panic  wait,check,encryptable=????
+ 
+ #<src>                                     <mnt_point>        <type>  <mnt_flags and options>   <fs_mgr_flags>
+-/devices/platform/jzmmc.0/mmc_host/mmc0    /storage/sdcard1   vfat    defaults                  voldmanaged=sdcard1:auto
++/devices/platform/jzmmc.0/mmc_host/mmc0    /storage/sdcard   vfat    defaults                  voldmanaged=sdcard:auto
+diff --git a/config/init.board.rc b/config/init.board.rc
+index 2700582..ef6f083 100755
+--- a/config/init.board.rc
++++ b/config/init.board.rc
+@@ -21,21 +21,10 @@ on init
+     chown radio radio  /dev/ttyUSB2
+     chmod 0666 /dev/ttyUSB2
+ 
+-    # See storage config details at http://source.android.com/tech/storage/
+-    mkdir /mnt/shell/emulated 0700 shell shell
+-    mkdir /storage/emulated 0555 root root
+-
+-    export EXTERNAL_STORAGE /storage/emulated/legacy
+-    export EMULATED_STORAGE_SOURCE /mnt/shell/emulated
+-    export EMULATED_STORAGE_TARGET /storage/emulated
+-
+     # Support legacy paths
+-    symlink /storage/emulated/legacy /sdcard
+-    symlink /storage/emulated/legacy /mnt/sdcard
+-    symlink /storage/emulated/legacy /storage/sdcard0
+-    symlink /mnt/shell/emulated/0 /storage/emulated/legacy
+-
+-    mkdir /storage/sdcard1 0400 system system
++    export EXTERNAL_STORAGE /storage/sdcard
++    mkdir /storage/sdcard 0400 system system
++    symlink /storage/sdcard /sdcard
+ 
+ on fs
+     mount ext4 /dev/block/ndsystem /system
+@@ -138,10 +127,6 @@ service disk_preparing /system/etc/disk_preparing.sh
+     class ingenic
+     oneshot
+ 
+-# virtual sdcard daemon running as media_rw (1023)
+-service sdcard /system/bin/sdcard /data/media /mnt/shell/emulated 1023 1023
+-    class late_start
+-
+ # add dhcpcd and wpa_supplicant services for wlan
+ # >>>>>NOTICE THE NAME<<<<<
+ # add dhcpcd and wpa_supplicant services for wlan
+diff --git a/config/vold.fstab b/config/vold.fstab
+index 546853f..bdb7733 100755
+--- a/config/vold.fstab
++++ b/config/vold.fstab
+@@ -23,7 +23,7 @@
+ # Mounts the first usable partition of the specified device
+ #dev_mount sdcard0 /storage/sdcard0 2 /devices/virtual/block/ndextern
+ 
+-dev_mount sdcard1 /storage/sdcard1 auto /devices/platform/jzmmc.0/mmc_host/mmc0
++dev_mount sdcard /storage/sdcard auto /devices/platform/jzmmc.0/mmc_host/mmc0
+ 
+ #dev_mount udisk /storage/udisk all /devices/lm0/usb1/1-1
+ 
+diff --git a/overlay/frameworks/base/core/res/res/xml/storage_list.xml b/overlay/frameworks/base/core/res/res/xml/storage_list.xml
+index 83388e6..394c538 100644
+--- a/overlay/frameworks/base/core/res/res/xml/storage_list.xml
++++ b/overlay/frameworks/base/core/res/res/xml/storage_list.xml
+@@ -34,14 +34,8 @@
+ 
+ 
+ <StorageList xmlns:android="http://schemas.android.com/apk/res/android">
+-    <!-- internal emulated storage -->
+-    <storage
+-            android:storageDescription="@string/storage_internal"
+-            android:primary="true"
+-            android:emulated="true"
+-            android:mtpReserve="100" />
+     <!-- external SD card -->
+-    <storage android:mountPoint="/storage/sdcard1"
++    <storage android:mountPoint="/storage/sdcard"
+             android:storageDescription="@string/storage_sd_card"
+             android:removable="true"
+             android:maxFileSize="4096" />
+-- 
+2.2.2
+

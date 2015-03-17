@@ -1,0 +1,39 @@
+From c5494574e3e1d394c7026b455c5f08b6a755ebdd Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <Milan.Jelisavcic@imgtec.com>
+Date: Mon, 26 Jan 2015 15:07:24 +0100
+Subject: [PATCH] [MIPS] Add support in opengl for aosp_mips.
+
+---
+ opengl/system/egl/Android.mk                 | 2 +-
+ opengl/tests/gles_android_wrapper/Android.mk | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/opengl/system/egl/Android.mk b/opengl/system/egl/Android.mk
+index a979089..1debe13 100644
+--- a/opengl/system/egl/Android.mk
++++ b/opengl/system/egl/Android.mk
+@@ -26,7 +26,7 @@ $(call emugl-end-module)
+ # Other builds are device-specific and will provide their own
+ # version of this file to point to the appropriate HW EGL libraries.
+ #
+-ifneq (,$(filter full full_x86 full_mips sdk sdk_x86 sdk_mips google_sdk google_sdk_x86 google_sdk_mips,$(TARGET_PRODUCT)))
++ifneq (,$(filter full full_x86 aosp_mips full_mips sdk sdk_x86 sdk_mips google_sdk google_sdk_x86 google_sdk_mips,$(TARGET_PRODUCT)))
+ include $(CLEAR_VARS)
+ 
+ LOCAL_MODULE := egl.cfg
+diff --git a/opengl/tests/gles_android_wrapper/Android.mk b/opengl/tests/gles_android_wrapper/Android.mk
+index d97212d..d236d1c 100644
+--- a/opengl/tests/gles_android_wrapper/Android.mk
++++ b/opengl/tests/gles_android_wrapper/Android.mk
+@@ -48,7 +48,7 @@ $(call emugl-end-module)
+ # Other builds are device-specific and will provide their own
+ # version of this file to point to the appropriate HW EGL libraries.
+ #
+-ifneq (,$(filter full full_x86 full_mips sdk sdk_x86 sdk_mips,$(TARGET_PRODUCT)))
++ifneq (,$(filter full full_x86 aops_mips full_mips sdk sdk_x86 sdk_mips,$(TARGET_PRODUCT)))
+ ifeq (,$(BUILD_EMULATOR_OPENGL_DRIVER))
+ include $(CLEAR_VARS)
+ 
+-- 
+2.2.2
+

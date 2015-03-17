@@ -1,0 +1,24 @@
+From d6ad8050c6ffbfb16a5ec16a36621f2b6f8fa08b Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <Milan.Jelisavcic@imgtec.com>
+Date: Mon, 26 Jan 2015 17:16:03 +0100
+Subject: [PATCH] [MIPS] Add missing include for libyuv.
+
+---
+ media/libyuv/libyuv.gyp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/media/libyuv/libyuv.gyp b/media/libyuv/libyuv.gyp
+index 6ff173d..73f70a1 100644
+--- a/media/libyuv/libyuv.gyp
++++ b/media/libyuv/libyuv.gyp
+@@ -149,6 +149,7 @@
+       ],
+       'include_dirs': [
+         'include',
++        '../../toolkit/crashreporter/google-breakpad/src/common/android/include',
+         '.',
+       ],
+       'direct_dependent_settings': {
+-- 
+2.2.2
+

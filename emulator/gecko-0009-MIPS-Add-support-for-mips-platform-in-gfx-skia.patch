@@ -1,0 +1,33 @@
+From 648bb3d9eb438fc99213acdf7d46c18f69bfa25b Mon Sep 17 00:00:00 2001
+From: Lazar Trsic <Lazar.Trsic@imgtec.com>
+Date: Mon, 26 Jan 2015 19:14:45 +0100
+Subject: [PATCH] [MIPS] Add support for mips platform in gfx/skia.
+
+---
+ gfx/skia/moz.build | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/gfx/skia/moz.build b/gfx/skia/moz.build
+index 12c3f94..0ea5158 100644
+--- a/gfx/skia/moz.build
++++ b/gfx/skia/moz.build
+@@ -800,6 +800,16 @@ elif CONFIG['CPU_ARCH'] == 'arm' and CONFIG['GNU_CC']:
+         SOURCES['trunk/src/opts/SkBlurImage_opts_neon.cpp'].flags += ['-mfpu=neon']
+         SOURCES['trunk/src/opts/SkMorphology_opts_neon.cpp'].flags += ['-mfpu=neon']
+         SOURCES['trunk/src/opts/SkXfermode_opts_arm_neon.cpp'].flags += ['-mfpu=neon']
++elif CONFIG['CPU_ARCH'] == 'mips' and CONFIG['GNU_CC']:
++    SOURCES += [
++        'trunk/src/opts/SkBitmapProcState_opts_none.cpp',
++        'trunk/src/opts/SkBlitMask_opts_none.cpp',
++        'trunk/src/opts/SkBlitRow_opts_none.cpp',
++        'trunk/src/opts/SkBlurImage_opts_none.cpp',
++        'trunk/src/opts/SkMorphology_opts_none.cpp',
++        'trunk/src/opts/SkUtils_opts_none.cpp',
++        'trunk/src/opts/SkXfermode_opts_none.cpp',
++    ]
+ else:
+     SOURCES += [
+         'trunk/src/opts/SkBitmapProcState_opts_none.cpp',
+-- 
+2.2.2
+

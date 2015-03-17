@@ -1,0 +1,26 @@
+From 10ca7508427697443e7d8296f48a398ee309db8f Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <milan.jelisavcic@imgtec.com>
+Date: Tue, 27 Jan 2015 19:51:05 +0100
+Subject: [PATCH] [MIPS] Change AAPT setting from tablet to default.
+
+This helps Marketplace app work correctly on Firefox OS.
+---
+ BoardConfig.mk | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/BoardConfig.mk b/BoardConfig.mk
+index b251261..70ebc7b 100644
+--- a/BoardConfig.mk
++++ b/BoardConfig.mk
+@@ -38,7 +38,7 @@ TARGET_FOR_CTS := false
+ TARGET_BOARD_PLATFORM := xb4780
+ TARGET_BOARD_PLATFORM_GPU := SGX540
+ TARGET_BOOTLOADER_BOARD_NAME := npm801
+-TARGET_AAPT_CHARACTERISTICS := tablet
++TARGET_AAPT_CHARACTERISTICS := default
+ PRODUCT_VENDOR_KERNEL_HEADERS := hardware/ingenic/xb4780/kernel-headers
+ TARGET_USERIMAGES_USE_EXT4 := true
+ # system size is 640M
+-- 
+2.2.2
+

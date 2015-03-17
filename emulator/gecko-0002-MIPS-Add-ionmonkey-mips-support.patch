@@ -1,0 +1,1074 @@
+From 3cc3521233186bc87c4b0f01a361648d11f500c4 Mon Sep 17 00:00:00 2001
+From: Branislav Rankov <Branislav.Rankov@imgtec.com>
+Date: Mon, 26 Jan 2015 15:57:12 +0100
+Subject: [PATCH] [MIPS] Add ionmonkey mips support.
+
+---
+ js/src/configure.in                                |  25 ++++
+ .../tests/basic/offThreadCompileScript-02.js       |   3 +
+ js/src/jit-test/tests/debug/Source-element-03.js   |   3 +
+ .../tests/debug/Source-introductionType.js         |   3 +
+ js/src/jit/AsmJS.cpp                               |   2 +-
+ js/src/jit/CodeGenerator.cpp                       |   5 +-
+ js/src/jit/IonFrames.cpp                           |  43 +++++-
+ js/src/jit/IonFrames.h                             |  15 ++-
+ js/src/jit/IonLinker.h                             |   2 +-
+ js/src/jit/IonMacroAssembler.h                     |  11 +-
+ js/src/jit/Lowering.cpp                            |   2 +-
+ js/src/jit/VMFunctions.h                           |  21 +++
+ js/src/jit/arm/MacroAssembler-arm.cpp              |  12 ++
+ js/src/jit/mips/CodeGenerator-mips.cpp             |   7 +-
+ js/src/jit/mips/LIR-mips.h                         |   8 +-
+ js/src/jit/mips/Lowering-mips.cpp                  |   4 +-
+ js/src/jit/mips/MacroAssembler-mips.cpp            | 148 ++++++++++++++++-----
+ js/src/jit/mips/MacroAssembler-mips.h              |  31 ++++-
+ js/src/jit/mips/Trampoline-mips.cpp                | 100 +++++++-------
+ js/src/jit/shared/MacroAssembler-x86-shared.cpp    |  12 ++
+ js/src/moz.build                                   |  17 +++
+ js/src/tests/lib/jittests.py                       |   2 +-
+ 22 files changed, 372 insertions(+), 104 deletions(-)
+
+diff --git a/js/src/configure.in b/js/src/configure.in
+index 80896ae..054f0ad 100644
+--- a/js/src/configure.in
++++ b/js/src/configure.in
+@@ -211,6 +211,9 @@ if test -n "$gonkdir" ; then
+     i?86)
+         ARCH_DIR=arch-x86
+         ;;
++    mips*)
++        ARCH_DIR=arch-mips
++        ;;
+     esac
+ 
+     CPPFLAGS="-DANDROID -isystem $gonkdir/bionic/libc/$ARCH_DIR/include -isystem $gonkdir/bionic/libc/include/ -isystem $gonkdir/bionic/libc/kernel/common -isystem $gonkdir/bionic/libc/kernel/$ARCH_DIR -isystem $gonkdir/bionic/libm/include -I$gonkdir/frameworks/base/native/include -I$gonkdir/system/core/include -isystem $gonkdir/bionic $CPPFLAGS -I$gonkdir/external/valgrind/fxos-include"
+@@ -2014,6 +2017,7 @@ powerpc-*)
+     AC_DEFINE(JS_NUNBOX32)
+     ;;
+ mips*-*)
++    ENABLE_ION=1
+     AC_DEFINE(JS_CPU_MIPS)
+     AC_DEFINE(JS_NUNBOX32)
+     ;;
+@@ -3244,6 +3248,15 @@ MOZ_ARG_ENABLE_BOOL(arm-simulator,
+ [  --enable-arm-simulator Enable ARM simulator for JIT code],
+     JS_ARM_SIMULATOR=1,
+     JS_ARM_SIMULATOR= )
++MOZ_ARG_ENABLE_BOOL(mips-simulator,
++[  --enable-mips-simulator Enable MIPS simulator for JIT code],
++    JS_MIPS_SIMULATOR=1,
++    JS_MIPS_SIMULATOR= )
++
++if test -n "$JS_ARM_SIMULATOR" && test -n "$JS_MIPS_SIMULATOR"; then
++    AC_MSG_ERROR([ARM and MIPS simulators cannot be enabled together.])
++fi
++
+ if test -n "$JS_ARM_SIMULATOR"; then
+     if test "$CPU_ARCH" != "x86"; then
+         AC_MSG_ERROR([The ARM simulator only works on x86.])
+@@ -3251,6 +3264,13 @@ if test -n "$JS_ARM_SIMULATOR"; then
+     AC_DEFINE(JS_ARM_SIMULATOR)
+     AC_DEFINE(JS_CODEGEN_ARM)
+     JS_CODEGEN_ARM=1
++elif test -n "$JS_MIPS_SIMULATOR"; then
++    if test "$CPU_ARCH" != "x86"; then
++        AC_MSG_ERROR([The MIPS simulator only works on x86.])
++    fi
++    AC_DEFINE(JS_MIPS_SIMULATOR)
++    AC_DEFINE(JS_CODEGEN_MIPS)
++    JS_CODEGEN_MIPS=1
+ elif test "$CPU_ARCH" = "x86"; then
+     AC_DEFINE(JS_CODEGEN_X86)
+     JS_CODEGEN_X86=1
+@@ -3260,10 +3280,15 @@ elif test "$CPU_ARCH" = "x86_64"; then
+ elif test "$CPU_ARCH" = "arm"; then
+     AC_DEFINE(JS_CODEGEN_ARM)
+     JS_CODEGEN_ARM=1
++elif test "$CPU_ARCH" = "mips"; then
++    AC_DEFINE(JS_CODEGEN_MIPS)
++    JS_CODEGEN_MIPS=1
+ fi
+ 
+ AC_SUBST(JS_ARM_SIMULATOR)
++AC_SUBST(JS_MIPS_SIMULATOR)
+ AC_SUBST(JS_CODEGEN_ARM)
++AC_SUBST(JS_CODEGEN_MIPS)
+ AC_SUBST(JS_CODEGEN_X86)
+ AC_SUBST(JS_CODEGEN_X64)
+ 
+diff --git a/js/src/jit-test/tests/basic/offThreadCompileScript-02.js b/js/src/jit-test/tests/basic/offThreadCompileScript-02.js
+index a441cce..9a2276b 100644
+--- a/js/src/jit-test/tests/basic/offThreadCompileScript-02.js
++++ b/js/src/jit-test/tests/basic/offThreadCompileScript-02.js
+@@ -1,5 +1,8 @@
+ // Test offThreadCompileScript option handling.
+ 
++if (helperThreadCount() === 0)
++  quit(0);
++
+ offThreadCompileScript('Error()');
+ assertEq(!!runOffThreadScript().stack.match(/^@<string>:1:1\n/), true);
+ 
+diff --git a/js/src/jit-test/tests/debug/Source-element-03.js b/js/src/jit-test/tests/debug/Source-element-03.js
+index fefa986..7b192fe 100644
+--- a/js/src/jit-test/tests/debug/Source-element-03.js
++++ b/js/src/jit-test/tests/debug/Source-element-03.js
+@@ -1,6 +1,9 @@
+ // Owning elements and attribute names are attached to scripts compiled
+ // off-thread.
+ 
++if (helperThreadCount() === 0)
++  quit(0);
++
+ var g = newGlobal();
+ var dbg = new Debugger;
+ var gDO = dbg.addDebuggee(g);
+diff --git a/js/src/jit-test/tests/debug/Source-introductionType.js b/js/src/jit-test/tests/debug/Source-introductionType.js
+index e59efc6..c881a42 100644
+--- a/js/src/jit-test/tests/debug/Source-introductionType.js
++++ b/js/src/jit-test/tests/debug/Source-introductionType.js
+@@ -1,5 +1,8 @@
+ // Check that scripts' introduction types are properly marked.
+ 
++if (helperThreadCount() === 0)
++  quit(0);
++
+ var g = newGlobal();
+ var dbg = new Debugger();
+ var gDO = dbg.addDebuggee(g);
+diff --git a/js/src/jit/AsmJS.cpp b/js/src/jit/AsmJS.cpp
+index d5472928..da485c3 100644
+--- a/js/src/jit/AsmJS.cpp
++++ b/js/src/jit/AsmJS.cpp
+@@ -1628,7 +1628,7 @@ class MOZ_STACK_CLASS ModuleCompiler
+             link.patchAtOffset = patchAtOffset;
+ 
+             InstImm *inst = (InstImm *)(module_->codeBase() + patchAtOffset);
+-            link.targetOffset = Assembler::extractLuiOriValue(inst, inst->next()) -
++            link.targetOffset = Assembler::ExtractLuiOriValue(inst, inst->next()) -
+                                 (uint32_t)module_->codeBase();
+ 
+             if (!module_->addRelativeLink(link))
+diff --git a/js/src/jit/CodeGenerator.cpp b/js/src/jit/CodeGenerator.cpp
+index 42b5bc4..353fafd 100644
+--- a/js/src/jit/CodeGenerator.cpp
++++ b/js/src/jit/CodeGenerator.cpp
+@@ -7828,8 +7828,9 @@ CodeGenerator::emitLoadElementT(LLoadElementT *lir, const T &source)
+ {
+     if (LIRGenerator::allowTypedElementHoleCheck()) {
+         if (lir->mir()->needsHoleCheck()) {
+-            Assembler::Condition cond = masm.testMagic(Assembler::Equal, source);
+-            if (!bailoutIf(cond, lir->snapshot()))
++            Label bail;
++            masm.branchTestMagic(Assembler::Equal, source, &bail);
++            if (!bailoutFrom(&bail, lir->snapshot()))
+                 return false;
+         }
+     } else {
+diff --git a/js/src/jit/IonFrames.cpp b/js/src/jit/IonFrames.cpp
+index 824f3c8..a2c6abc 100644
+--- a/js/src/jit/IonFrames.cpp
++++ b/js/src/jit/IonFrames.cpp
+@@ -330,7 +330,9 @@ JitFrameIterator::machineState() const
+     for (GeneralRegisterBackwardIterator iter(reader.allGprSpills()); iter.more(); iter++)
+         machine.setRegisterLocation(*iter, --spill);
+ 
+-    double *floatSpill = reinterpret_cast<double *>(spill);
++    uint8_t *spillAlign = alignDoubleSpillWithOffset(reinterpret_cast<uint8_t *>(spill), 0);
++
++    double *floatSpill = reinterpret_cast<double *>(spillAlign);
+     for (FloatRegisterBackwardIterator iter(reader.allFloatSpills()); iter.more(); iter++)
+         machine.setRegisterLocation(*iter, --floatSpill);
+ 
+@@ -1028,6 +1030,43 @@ JitActivationIterator::jitStackRange(uintptr_t *&min, uintptr_t *&end)
+     end = reinterpret_cast<uintptr_t *>(frames.prevFp());
+ }
+ 
++#ifdef JS_CODEGEN_MIPS
++uint8_t *
++alignDoubleSpillWithOffset(uint8_t *pointer, int32_t offset)
++{
++    uint32_t address = reinterpret_cast<uint32_t>(pointer);
++    address = (address - offset) & ~(StackAlignment - 1);
++    return reinterpret_cast<uint8_t *>(address);
++}
++
++static void
++MarkJitExitFrameCopiedArguments(JSTracer *trc, const VMFunction *f, IonExitFooterFrame *footer)
++{
++    uint8_t *doubleArgs = reinterpret_cast<uint8_t *>(footer);
++    doubleArgs = alignDoubleSpillWithOffset(doubleArgs, sizeof(intptr_t));
++    if (f->outParam == Type_Handle)
++        doubleArgs -= sizeof(Value);
++    doubleArgs -= f->doubleByRefArgs() * sizeof(double);
++
++    for (uint32_t explicitArg = 0; explicitArg < f->explicitArgs; explicitArg++) {
++        if (f->argProperties(explicitArg) == VMFunction::DoubleByRef) {
++            // Arguments with double size can only have RootValue type.
++            if (f->argRootType(explicitArg) == VMFunction::RootValue)
++                gc::MarkValueRoot(trc, reinterpret_cast<Value*>(doubleArgs), "ion-vm-args");
++            else
++                JS_ASSERT(f->argRootType(explicitArg) == VMFunction::RootNone);
++            doubleArgs += sizeof(double);
++        }
++    }
++}
++#else
++static void
++MarkJitExitFrameCopiedArguments(JSTracer *trc, const VMFunction *f, IonExitFooterFrame *footer)
++{
++    // This is NO-OP on other platforms.
++}
++#endif
++
+ static void
+ MarkJitExitFrame(JSTracer *trc, const JitFrameIterator &frame)
+ {
+@@ -1174,6 +1213,8 @@ MarkJitExitFrame(JSTracer *trc, const JitFrameIterator &frame)
+             break;
+         }
+     }
++
++    MarkJitExitFrameCopiedArguments(trc, f, footer);
+ }
+ 
+ static void
+diff --git a/js/src/jit/IonFrames.h b/js/src/jit/IonFrames.h
+index c760fda..97674d7 100644
+--- a/js/src/jit/IonFrames.h
++++ b/js/src/jit/IonFrames.h
+@@ -301,6 +301,17 @@ GetTopIonJSScript(uint8_t *jitTop, void **returnAddrOut, ExecutionMode mode)
+     return iter.script();
+ }
+ 
++#ifdef JS_CODEGEN_MIPS
++uint8_t *alignDoubleSpillWithOffset(uint8_t *pointer, int32_t offset);
++#else
++inline uint8_t *
++alignDoubleSpillWithOffset(uint8_t *pointer, int32_t offset)
++{
++    // This is NO-OP on non-MIPS platforms.
++    return pointer;
++}
++#endif
++
+ // Layout of the frame prefix. This assumes the stack architecture grows down.
+ // If this is ever not the case, we'll have to refactor.
+ class IonCommonFrameLayout
+@@ -443,7 +454,9 @@ class IonExitFooterFrame
+     // This should only be called for function()->outParam == Type_Handle
+     template <typename T>
+     T *outParam() {
+-        return reinterpret_cast<T *>(reinterpret_cast<char *>(this) - sizeof(T));
++        uint8_t *address = reinterpret_cast<uint8_t *>(this);
++        address = alignDoubleSpillWithOffset(address, sizeof(intptr_t));
++        return reinterpret_cast<T *>(address - sizeof(T));
+     }
+ };
+ 
+diff --git a/js/src/jit/IonLinker.h b/js/src/jit/IonLinker.h
+index 760cdc5..89a971e 100644
+--- a/js/src/jit/IonLinker.h
++++ b/js/src/jit/IonLinker.h
+@@ -82,7 +82,7 @@ class Linker
+     }
+ 
+     JitCode *newCodeForIonScript(JSContext *cx) {
+-#ifdef JS_CODEGEN_ARM
++#if defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_MIPS)
+         // ARM does not yet use implicit interrupt checks, see bug 864220.
+         return newCode<CanGC>(cx, JSC::ION_CODE);
+ #else
+diff --git a/js/src/jit/IonMacroAssembler.h b/js/src/jit/IonMacroAssembler.h
+index 8f42351..76552be 100644
+--- a/js/src/jit/IonMacroAssembler.h
++++ b/js/src/jit/IonMacroAssembler.h
+@@ -1392,15 +1392,21 @@ class MacroAssembler : public MacroAssemblerSpecific
+ #endif
+         {}
+ 
+-#ifdef JS_DEBUG
+       public:
++#ifdef JS_DEBUG
+         uint32_t initialStack;
+ #endif
++        uint32_t alignmentPadding;
+     };
+ 
++    void alignFrameForICArguments(AfterICSaveLive &aic);
++    void restoreFrameAlignmentForICArguments(AfterICSaveLive &aic);
++
+     AfterICSaveLive icSaveLive(RegisterSet &liveRegs) {
+         PushRegsInMask(liveRegs);
+-        return AfterICSaveLive(framePushed());
++        AfterICSaveLive aic(framePushed());
++        alignFrameForICArguments(aic);
++        return aic;
+     }
+ 
+     bool icBuildOOLFakeExitFrame(void *fakeReturnAddr, AfterICSaveLive &aic) {
+@@ -1408,6 +1414,7 @@ class MacroAssembler : public MacroAssemblerSpecific
+     }
+ 
+     void icRestoreLive(RegisterSet &liveRegs, AfterICSaveLive &aic) {
++        restoreFrameAlignmentForICArguments(aic);
+         JS_ASSERT(framePushed() == aic.initialStack);
+         PopRegsInMask(liveRegs);
+     }
+diff --git a/js/src/jit/Lowering.cpp b/js/src/jit/Lowering.cpp
+index 439a03a..720a550 100644
+--- a/js/src/jit/Lowering.cpp
++++ b/js/src/jit/Lowering.cpp
+@@ -2184,7 +2184,7 @@ LIRGenerator::visitInterruptCheck(MInterruptCheck *ins)
+     // Implicit interrupt checks require asm.js signal handlers to be
+     // installed. ARM does not yet use implicit interrupt checks, see
+     // bug 864220.
+-#ifndef JS_CODEGEN_ARM
++#if !defined(JS_CODEGEN_ARM) && !defined(JS_CODEGEN_MIPS)
+     if (GetIonContext()->runtime->signalHandlersInstalled()) {
+         LInterruptCheckImplicit *lir = new(alloc()) LInterruptCheckImplicit();
+         return add(lir, ins) && assignSafepoint(lir, ins);
+diff --git a/js/src/jit/VMFunctions.h b/js/src/jit/VMFunctions.h
+index 3d0bd4b..30ead15 100644
+--- a/js/src/jit/VMFunctions.h
++++ b/js/src/jit/VMFunctions.h
+@@ -188,6 +188,27 @@ struct VMFunction
+         return stackSlots;
+     }
+ 
++    size_t doubleByRefArgs() const {
++        size_t count = 0;
++
++        // Fetch all explicit arguments.
++        uint32_t n =
++            ((1 << (explicitArgs * 2)) - 1) // = Explicit argument mask.
++            & argumentProperties;
++
++        // Filter double-size arguments (0x5 = 0b0101) and take (&) only
++        // arguments passed by reference (0b1010 >> 1 == 0b0101).
++        n = (n & 0x55555555) & (n >> 1);
++
++        // Add the number of double-word transfered by refference. (expect a
++        // few loop iterations)
++        while (n) {
++            count++;
++            n &= n - 1;
++        }
++        return count;
++    }
++
+     VMFunction()
+       : wrapped(nullptr),
+         explicitArgs(0),
+diff --git a/js/src/jit/arm/MacroAssembler-arm.cpp b/js/src/jit/arm/MacroAssembler-arm.cpp
+index ab5ffc6..46d0c5d 100644
+--- a/js/src/jit/arm/MacroAssembler-arm.cpp
++++ b/js/src/jit/arm/MacroAssembler-arm.cpp
+@@ -1822,6 +1822,18 @@ MacroAssemblerARMCompat::callIon(Register callee)
+ }
+ 
+ void
++MacroAssembler::alignFrameForICArguments(AfterICSaveLive &aic)
++{
++    // Exists for MIPS compatibility.
++}
++
++void
++MacroAssembler::restoreFrameAlignmentForICArguments(AfterICSaveLive &aic)
++{
++    // Exists for MIPS compatibility.
++}
++
++void
+ MacroAssemblerARMCompat::reserveStack(uint32_t amount)
+ {
+     if (amount)
+diff --git a/js/src/jit/mips/CodeGenerator-mips.cpp b/js/src/jit/mips/CodeGenerator-mips.cpp
+index d9d056e..94a2b28 100644
+--- a/js/src/jit/mips/CodeGenerator-mips.cpp
++++ b/js/src/jit/mips/CodeGenerator-mips.cpp
+@@ -808,18 +808,19 @@ CodeGeneratorMIPS::visitModMaskI(LModMaskI *ins)
+ {
+     Register src = ToRegister(ins->getOperand(0));
+     Register dest = ToRegister(ins->getDef(0));
+-    Register tmp = ToRegister(ins->getTemp(0));
++    Register tmp0 = ToRegister(ins->getTemp(0));
++    Register tmp1 = ToRegister(ins->getTemp(1));
+     MMod *mir = ins->mir();
+ 
+     if (!mir->isTruncated() && mir->canBeNegativeDividend()) {
+         MOZ_ASSERT(mir->fallible());
+ 
+         Label bail;
+-        masm.ma_mod_mask(src, dest, tmp, ins->shift(), &bail);
++        masm.ma_mod_mask(src, dest, tmp0, tmp1, ins->shift(), &bail);
+         if (!bailoutFrom(&bail, ins->snapshot()))
+             return false;
+     } else {
+-        masm.ma_mod_mask(src, dest, tmp, ins->shift(), nullptr);
++        masm.ma_mod_mask(src, dest, tmp0, tmp1, ins->shift(), nullptr);
+     }
+     return true;
+ }
+diff --git a/js/src/jit/mips/LIR-mips.h b/js/src/jit/mips/LIR-mips.h
+index 7a7d51c..996d7f3 100644
+--- a/js/src/jit/mips/LIR-mips.h
++++ b/js/src/jit/mips/LIR-mips.h
+@@ -208,18 +208,20 @@ class LModPowTwoI : public LInstructionHelper<1, 1, 0>
+     }
+ };
+ 
+-class LModMaskI : public LInstructionHelper<1, 1, 1>
++class LModMaskI : public LInstructionHelper<1, 1, 2>
+ {
+     const int32_t shift_;
+ 
+   public:
+     LIR_HEADER(ModMaskI);
+ 
+-    LModMaskI(const LAllocation &lhs, const LDefinition &temp1, int32_t shift)
++    LModMaskI(const LAllocation &lhs, const LDefinition &temp0, const LDefinition &temp1,
++              int32_t shift)
+       : shift_(shift)
+     {
+         setOperand(0, lhs);
+-        setTemp(0, temp1);
++        setTemp(0, temp0);
++        setTemp(1, temp1);
+     }
+ 
+     int32_t shift() const {
+diff --git a/js/src/jit/mips/Lowering-mips.cpp b/js/src/jit/mips/Lowering-mips.cpp
+index 6f84a5f..240b404 100644
+--- a/js/src/jit/mips/Lowering-mips.cpp
++++ b/js/src/jit/mips/Lowering-mips.cpp
+@@ -322,7 +322,9 @@ LIRGeneratorMIPS::lowerModI(MMod *mod)
+             return define(lir, mod);
+         } else if (shift < 31 && (1 << (shift + 1)) - 1 == rhs) {
+             LModMaskI *lir = new(alloc()) LModMaskI(useRegister(mod->lhs()),
+-                                           temp(LDefinition::GENERAL), shift + 1);
++                                                    temp(LDefinition::GENERAL),
++                                                    temp(LDefinition::GENERAL),
++                                                    shift + 1);
+             if (mod->fallible() && !assignSnapshot(lir, Bailout_BaselineInfo))
+                 return false;
+             return define(lir, mod);
+diff --git a/js/src/jit/mips/MacroAssembler-mips.cpp b/js/src/jit/mips/MacroAssembler-mips.cpp
+index 673dc34..467f9e4 100644
+--- a/js/src/jit/mips/MacroAssembler-mips.cpp
++++ b/js/src/jit/mips/MacroAssembler-mips.cpp
+@@ -105,6 +105,7 @@ MacroAssemblerMIPS::branchTruncateDouble(FloatRegister src, Register dest,
+     as_mfc1(dest, ScratchFloatReg);
+ 
+     ma_b(dest, Imm32(INT32_MAX), fail, Assembler::Equal);
++    ma_b(dest, Imm32(INT32_MIN), fail, Assembler::Equal);
+ }
+ 
+ // Checks whether a double is representable as a 32-bit integer. If so, the
+@@ -620,8 +621,8 @@ MacroAssemblerMIPS::ma_div_branch_overflow(Register rd, Register rs, Imm32 imm,
+ }
+ 
+ void
+-MacroAssemblerMIPS::ma_mod_mask(Register src, Register dest, Register hold, int32_t shift,
+-                                Label *negZero)
++MacroAssemblerMIPS::ma_mod_mask(Register src, Register dest, Register hold, Register remain,
++                                int32_t shift, Label *negZero)
+ {
+     // MATH:
+     // We wish to compute x % (1<<y) - 1 for a known constant, y.
+@@ -641,34 +642,32 @@ MacroAssemblerMIPS::ma_mod_mask(Register src, Register dest, Register hold, int3
+     Label head, negative, sumSigned, done;
+ 
+     // hold holds -1 if the value was negative, 1 otherwise.
+-    // ScratchRegister holds the remaining bits that have not been processed
+-    // lr serves as a temporary location to store extracted bits into as well
+-    // as holding the trial subtraction as a temp value dest is the
+-    // accumulator (and holds the final result)
+-
+-    // move the whole value into the scratch register, setting the codition
+-    // codes so we can muck with them later.
+-    ma_move(ScratchRegister, src);
++    // remain holds the remaining bits that have not been processed
++    // SecondScratchReg serves as a temporary location to store extracted bits
++    // into as well as holding the trial subtraction as a temp value dest is
++    // the accumulator (and holds the final result)
++
++    // move the whole value into the remain.
++    ma_move(remain, src);
+     // Zero out the dest.
+-    ma_subu(dest, dest, dest);
++    ma_li(dest, Imm32(0));
+     // Set the hold appropriately.
+-    ma_b(ScratchRegister, ScratchRegister, &negative, Signed, ShortJump);
++    ma_b(remain, remain, &negative, Signed, ShortJump);
+     ma_li(hold, Imm32(1));
+     ma_b(&head, ShortJump);
+ 
+     bind(&negative);
+     ma_li(hold, Imm32(-1));
+-    ma_negu(ScratchRegister, ScratchRegister);
++    ma_negu(remain, remain);
+ 
+     // Begin the main loop.
+     bind(&head);
+ 
+-    // Extract the bottom bits into lr.
+-    ma_and(SecondScratchReg, ScratchRegister, Imm32(mask));
++    // Extract the bottom bits into SecondScratchReg.
++    ma_and(SecondScratchReg, remain, Imm32(mask));
+     // Add those bits to the accumulator.
+     as_addu(dest, dest, SecondScratchReg);
+-    // Do a trial subtraction, this is the same operation as cmp, but we
+-    // store the dest
++    // Do a trial subtraction
+     ma_subu(SecondScratchReg, dest, Imm32(mask));
+     // If (sum - C) > 0, store sum - C back into sum, thus performing a
+     // modulus.
+@@ -676,9 +675,9 @@ MacroAssemblerMIPS::ma_mod_mask(Register src, Register dest, Register hold, int3
+     ma_move(dest, SecondScratchReg);
+     bind(&sumSigned);
+     // Get rid of the bits that we extracted before.
+-    as_srl(ScratchRegister, ScratchRegister, shift);
++    as_srl(remain, remain, shift);
+     // If the shift produced zero, finish, otherwise, continue in the loop.
+-    ma_b(ScratchRegister, ScratchRegister, &head, NonZero, ShortJump);
++    ma_b(remain, remain, &head, NonZero, ShortJump);
+     // Check the hold to see if we need to negate the result.
+     ma_b(hold, hold, &done, NotSigned, ShortJump);
+ 
+@@ -1675,6 +1674,12 @@ MacroAssemblerMIPSCompat::not32(Register reg)
+ 
+ // Logical operations
+ void
++MacroAssemblerMIPSCompat::and32(Register src, Register dest)
++{
++    ma_and(dest, dest, src);
++}
++
++void
+ MacroAssemblerMIPSCompat::and32(Imm32 imm, Register dest)
+ {
+     ma_and(dest, imm);
+@@ -1689,6 +1694,13 @@ MacroAssemblerMIPSCompat::and32(Imm32 imm, const Address &dest)
+ }
+ 
+ void
++MacroAssemblerMIPSCompat::and32(const Address &src, Register dest)
++{
++    load32(src, SecondScratchReg);
++    ma_and(dest, SecondScratchReg);
++}
++
++void
+ MacroAssemblerMIPSCompat::or32(Imm32 imm, const Address &dest)
+ {
+     load32(dest, SecondScratchReg);
+@@ -2025,6 +2037,12 @@ MacroAssemblerMIPSCompat::storePtr(Register src, const Address &address)
+ }
+ 
+ void
++MacroAssemblerMIPSCompat::storePtr(Register src, const BaseIndex &address)
++{
++    ma_store(src, address, SizeWord);
++}
++
++void
+ MacroAssemblerMIPSCompat::storePtr(Register src, AbsoluteAddress dest)
+ {
+     ma_li(ScratchRegister, Imm32((uint32_t)dest.addr));
+@@ -2083,6 +2101,13 @@ MacroAssemblerMIPSCompat::subPtr(Imm32 imm, const Register dest)
+ }
+ 
+ void
++MacroAssemblerMIPSCompat::subPtr(const Address &addr, const Register dest)
++{
++    loadPtr(addr, SecondScratchReg);
++    subPtr(SecondScratchReg, dest);
++}
++
++void
+ MacroAssemblerMIPSCompat::subPtr(Register src, const Address &dest)
+ {
+     loadPtr(dest, SecondScratchReg);
+@@ -2686,6 +2711,35 @@ MacroAssemblerMIPSCompat::getType(const Value &val)
+     return jv.s.tag;
+ }
+ 
++template <typename T>
++void
++MacroAssemblerMIPSCompat::storeUnboxedValue(ConstantOrRegister value, MIRType valueType, const T &dest,
++                                            MIRType slotType)
++{
++    if (valueType == MIRType_Double) {
++        storeDouble(value.reg().typedReg().fpu(), dest);
++        return;
++    }
++
++    // Store the type tag if needed.
++    if (valueType != slotType)
++        storeTypeTag(ImmType(ValueTypeFromMIRType(valueType)), dest);
++
++    // Store the payload.
++    if (value.constant())
++        storePayload(value.value(), dest);
++    else
++        storePayload(value.reg().typedReg().gpr(), dest);
++}
++
++template void
++MacroAssemblerMIPSCompat::storeUnboxedValue(ConstantOrRegister value, MIRType valueType, const Address &dest,
++                                            MIRType slotType);
++
++template void
++MacroAssemblerMIPSCompat::storeUnboxedValue(ConstantOrRegister value, MIRType valueType, const BaseIndex &dest,
++                                            MIRType slotType);
++
+ void
+ MacroAssemblerMIPSCompat::moveData(const Value &val, Register data)
+ {
+@@ -2877,10 +2931,11 @@ MacroAssemblerMIPSCompat::storePayload(Register src, Address dest)
+ }
+ 
+ void
+-MacroAssemblerMIPSCompat::storePayload(const Value &val, Register base, Register index,
+-                                       int32_t shift)
++MacroAssemblerMIPSCompat::storePayload(const Value &val, const BaseIndex &dest)
+ {
+-    computeScaledAddress(BaseIndex(base, index, ShiftToScale(shift)), SecondScratchReg);
++    MOZ_ASSERT(dest.offset == 0);
++
++    computeScaledAddress(dest, SecondScratchReg);
+ 
+     moveData(val, ScratchRegister);
+ 
+@@ -2888,9 +2943,11 @@ MacroAssemblerMIPSCompat::storePayload(const Value &val, Register base, Register
+ }
+ 
+ void
+-MacroAssemblerMIPSCompat::storePayload(Register src, Register base, Register index, int32_t shift)
++MacroAssemblerMIPSCompat::storePayload(Register src, const BaseIndex &dest)
+ {
+-    computeScaledAddress(BaseIndex(base, index, ShiftToScale(shift)), SecondScratchReg);
++    MOZ_ASSERT(dest.offset == 0);
++
++    computeScaledAddress(dest, SecondScratchReg);
+     as_sw(src, SecondScratchReg, NUNBOX32_PAYLOAD_OFFSET);
+ }
+ 
+@@ -2902,9 +2959,11 @@ MacroAssemblerMIPSCompat::storeTypeTag(ImmTag tag, Address dest)
+ }
+ 
+ void
+-MacroAssemblerMIPSCompat::storeTypeTag(ImmTag tag, Register base, Register index, int32_t shift)
++MacroAssemblerMIPSCompat::storeTypeTag(ImmTag tag, const BaseIndex &dest)
+ {
+-    computeScaledAddress(BaseIndex(base, index, ShiftToScale(shift)), SecondScratchReg);
++    MOZ_ASSERT(dest.offset == 0);
++
++    computeScaledAddress(dest, SecondScratchReg);
+     ma_li(ScratchRegister, tag);
+     as_sw(ScratchRegister, SecondScratchReg, TAG_OFFSET);
+ }
+@@ -3133,11 +3192,38 @@ MacroAssemblerMIPSCompat::checkStackAlignment()
+ }
+ 
+ void
+-MacroAssemblerMIPSCompat::alignPointerUp(Register src, Register dest, uint32_t alignment)
++MacroAssemblerMIPSCompat::alignStackPointer()
++{
++    movePtr(StackPointer, SecondScratchReg);
++    subPtr(Imm32(sizeof(uintptr_t)), StackPointer);
++    andPtr(Imm32(~(StackAlignment - 1)), StackPointer);
++    storePtr(SecondScratchReg, Address(StackPointer, 0));
++}
++
++void
++MacroAssemblerMIPSCompat::restoreStackPointer()
++{
++    loadPtr(Address(StackPointer, 0), StackPointer);
++}
++
++void
++MacroAssembler::alignFrameForICArguments(AfterICSaveLive &aic)
++{
++    if (framePushed() % StackAlignment != 0) {
++        aic.alignmentPadding = StackAlignment - (framePushed() % StackAlignment);
++        reserveStack(aic.alignmentPadding);
++    } else {
++        aic.alignmentPadding = 0;
++    }
++    MOZ_ASSERT(framePushed() % StackAlignment == 0);
++    checkStackAlignment();
++}
++
++void
++MacroAssembler::restoreFrameAlignmentForICArguments(AfterICSaveLive &aic)
+ {
+-    MOZ_ASSERT(alignment > 1);
+-    ma_addu(dest, src, Imm32(alignment - 1));
+-    ma_and(dest, dest, Imm32(~(alignment - 1)));
++    if (aic.alignmentPadding != 0)
++        freeStack(aic.alignmentPadding);
+ }
+ 
+ void
+@@ -3391,7 +3477,7 @@ MacroAssemblerMIPSCompat::toggledCall(JitCode *target, bool enabled)
+         as_nop();
+         as_nop();
+     }
+-    MOZ_ASSERT(nextOffset().getOffset() - offset.offset() == ToggledCallSize());
++    MOZ_ASSERT(nextOffset().getOffset() - offset.offset() == ToggledCallSize(nullptr));
+     return offset;
+ }
+ 
+diff --git a/js/src/jit/mips/MacroAssembler-mips.h b/js/src/jit/mips/MacroAssembler-mips.h
+index 60aeada..26df642 100644
+--- a/js/src/jit/mips/MacroAssembler-mips.h
++++ b/js/src/jit/mips/MacroAssembler-mips.h
+@@ -200,8 +200,8 @@ class MacroAssemblerMIPS : public Assembler
+ 
+     // fast mod, uses scratch registers, and thus needs to be in the assembler
+     // implicitly assumes that we can overwrite dest at the beginning of the sequence
+-    void ma_mod_mask(Register src, Register dest, Register hold, int32_t shift,
+-                     Label *negZero = nullptr);
++    void ma_mod_mask(Register src, Register dest, Register hold, Register remain,
++                     int32_t shift, Label *negZero = nullptr);
+ 
+     // memory
+     // shortcut for when we know we're transferring 32 bits of data
+@@ -513,7 +513,7 @@ class MacroAssemblerMIPSCompat : public MacroAssemblerMIPS
+     // this instruction.
+     CodeOffsetLabel toggledCall(JitCode *target, bool enabled);
+ 
+-    static size_t ToggledCallSize() {
++    static size_t ToggledCallSize(uint8_t *code) {
+         // Four instructions used in: MacroAssemblerMIPSCompat::toggledCall
+         return 4 * sizeof(uint32_t);
+     }
+@@ -736,6 +736,10 @@ class MacroAssemblerMIPSCompat : public MacroAssemblerMIPS
+         ma_lw(SecondScratchReg, address);
+         branchTest32(cond, SecondScratchReg, imm, label);
+     }
++    void branchTest32(Condition cond, AbsoluteAddress address, Imm32 imm, Label *label) {
++        loadPtr(address, ScratchRegister);
++        branchTest32(cond, ScratchRegister, imm, label);
++    }
+     void branchTestPtr(Condition cond, Register lhs, Register rhs, Label *label) {
+         branchTest32(cond, lhs, rhs, label);
+     }
+@@ -842,6 +846,10 @@ public:
+             load32(address, dest.gpr());
+     }
+ 
++    template <typename T>
++    void storeUnboxedValue(ConstantOrRegister value, MIRType valueType, const T &dest,
++                           MIRType slotType);
++
+     void moveValue(const Value &val, const ValueOperand &dest);
+ 
+     void moveValue(const ValueOperand &src, const ValueOperand &dest) {
+@@ -911,10 +919,10 @@ public:
+     }
+     void storePayload(const Value &val, Address dest);
+     void storePayload(Register src, Address dest);
+-    void storePayload(const Value &val, Register base, Register index, int32_t shift = defaultShift);
+-    void storePayload(Register src, Register base, Register index, int32_t shift = defaultShift);
++    void storePayload(const Value &val, const BaseIndex &dest);
++    void storePayload(Register src, const BaseIndex &dest);
+     void storeTypeTag(ImmTag tag, Address dest);
+-    void storeTypeTag(ImmTag tag, Register base, Register index, int32_t shift = defaultShift);
++    void storeTypeTag(ImmTag tag, const BaseIndex &dest);
+ 
+     void makeFrameDescriptor(Register frameSizeReg, FrameType type) {
+         ma_sll(frameSizeReg, frameSizeReg, Imm32(FRAMESIZE_SHIFT));
+@@ -1030,8 +1038,10 @@ public:
+         }
+     }
+ 
++    void and32(Register src, Register dest);
+     void and32(Imm32 imm, Register dest);
+     void and32(Imm32 imm, const Address &dest);
++    void and32(const Address &src, Register dest);
+     void or32(Imm32 imm, const Address &dest);
+     void xor32(Imm32 imm, Register dest);
+     void xorPtr(Imm32 imm, Register dest);
+@@ -1107,6 +1117,7 @@ public:
+     void storePtr(ImmPtr imm, const Address &address);
+     void storePtr(ImmGCPtr imm, const Address &address);
+     void storePtr(Register src, const Address &address);
++    void storePtr(Register src, const BaseIndex &address);
+     void storePtr(Register src, AbsoluteAddress dest);
+     void storeDouble(FloatRegister src, Address addr) {
+         ma_sd(src, addr);
+@@ -1156,6 +1167,7 @@ public:
+     }
+ 
+     void subPtr(Imm32 imm, const Register dest);
++    void subPtr(const Address &addr, const Register dest);
+     void subPtr(Register src, const Address &dest);
+     void addPtr(Imm32 imm, const Register dest);
+     void addPtr(Imm32 imm, const Address &dest);
+@@ -1180,11 +1192,16 @@ public:
+ 
+     void checkStackAlignment();
+ 
+-    void alignPointerUp(Register src, Register dest, uint32_t alignment);
++    void alignStackPointer();
++    void restoreStackPointer();
++    static void calculateAlignedStackPointer(void **stackPointer);
+ 
+     void rshiftPtr(Imm32 imm, Register dest) {
+         ma_srl(dest, dest, imm);
+     }
++    void rshiftPtrArithmetic(Imm32 imm, Register dest) {
++        ma_sra(dest, dest, imm);
++    }
+     void lshiftPtr(Imm32 imm, Register dest) {
+         ma_sll(dest, dest, imm);
+     }
+diff --git a/js/src/jit/mips/Trampoline-mips.cpp b/js/src/jit/mips/Trampoline-mips.cpp
+index 57dd8cd..ad4f2bf 100644
+--- a/js/src/jit/mips/Trampoline-mips.cpp
++++ b/js/src/jit/mips/Trampoline-mips.cpp
+@@ -689,31 +689,22 @@ JitRuntime::generateVMWrapper(JSContext *cx, const VMFunction &f)
+         masm.ma_addu(argsBase, StackPointer, Imm32(IonExitFrameLayout::SizeWithFooter()));
+     }
+ 
+-    // Reserve space for the outparameter.
+-    Register outReg = InvalidReg;
++    masm.alignStackPointer();
++
++    // Reserve space for the outparameter. Reserve sizeof(Value) for every
++    // case so that stack stays aligned.
++    uint32_t outParamSize = 0;
+     switch (f.outParam) {
+       case Type_Value:
+-        outReg = t0; // Use temporary register.
+-        regs.take(outReg);
+-        // Value outparam has to be 8 byte aligned because the called
+-        // function can use sdc1 or ldc1 instructions to access it.
+-        masm.reserveStack((StackAlignment - sizeof(uintptr_t)) + sizeof(Value));
+-        masm.alignPointerUp(StackPointer, outReg, StackAlignment);
++        outParamSize = sizeof(Value);
++        masm.reserveStack(outParamSize);
+         break;
+ 
+       case Type_Handle:
+-        outReg = t0;
+-        regs.take(outReg);
+-        if (f.outParamRootType == VMFunction::RootValue) {
+-            // Value outparam has to be 8 byte aligned because the called
+-            // function can use sdc1 or ldc1 instructions to access it.
+-            masm.reserveStack((StackAlignment - sizeof(uintptr_t)) + sizeof(Value));
+-            masm.alignPointerUp(StackPointer, outReg, StackAlignment);
+-            masm.storeValue(UndefinedValue(), Address(outReg, 0));
+-        }
+-        else {
++        {
++            uint32_t pushed = masm.framePushed();
+             masm.PushEmptyRooted(f.outParamRootType);
+-            masm.movePtr(StackPointer, outReg);
++            outParamSize = masm.framePushed() - pushed;
+         }
+         break;
+ 
+@@ -721,30 +712,37 @@ JitRuntime::generateVMWrapper(JSContext *cx, const VMFunction &f)
+       case Type_Int32:
+         MOZ_ASSERT(sizeof(uintptr_t) == sizeof(uint32_t));
+       case Type_Pointer:
+-        outReg = t0;
+-        regs.take(outReg);
+-        masm.reserveStack(sizeof(uintptr_t));
+-        masm.movePtr(StackPointer, outReg);
++        outParamSize = sizeof(uintptr_t);
++        masm.reserveStack(outParamSize);
+         break;
+ 
+       case Type_Double:
+-        outReg = t0;
+-        regs.take(outReg);
+-        // Double outparam has to be 8 byte aligned because the called
+-        // function can use sdc1 or ldc1 instructions to access it.
+-        masm.reserveStack((StackAlignment - sizeof(uintptr_t)) + sizeof(double));
+-        masm.alignPointerUp(StackPointer, outReg, StackAlignment);
++        outParamSize = sizeof(double);
++        masm.reserveStack(outParamSize);
+         break;
+-
+       default:
+         MOZ_ASSERT(f.outParam == Type_Void);
+         break;
+     }
+ 
+-    masm.setupUnalignedABICall(f.argc(), regs.getAny());
++    uint32_t outParamOffset = 0;
++    if (f.outParam != Type_Void) {
++        // Make sure that stack is double aligned after outParam.
++        MOZ_ASSERT(outParamSize <= sizeof(double));
++        outParamOffset += sizeof(double) - outParamSize;
++    }
++    // Reserve stack for double sized args that are copied to be aligned.
++    outParamOffset += f.doubleByRefArgs() * sizeof(double);
++
++    Register doubleArgs = t0;
++    masm.reserveStack(outParamOffset);
++    masm.movePtr(StackPointer, doubleArgs);
++
++    masm.setupAlignedABICall(f.argc());
+     masm.passABIArg(cxreg);
+ 
+     size_t argDisp = 0;
++    size_t doubleArgDisp = 0;
+ 
+     // Copy any arguments.
+     for (uint32_t explicitArg = 0; explicitArg < f.explicitArgs; explicitArg++) {
+@@ -767,16 +765,25 @@ JitRuntime::generateVMWrapper(JSContext *cx, const VMFunction &f)
+             argDisp += sizeof(uint32_t);
+             break;
+           case VMFunction::DoubleByRef:
+-            masm.passABIArg(MoveOperand(argsBase, argDisp, MoveOperand::EFFECTIVE_ADDRESS),
++            // Copy double sized argument to aligned place.
++            masm.ma_ld(ScratchFloatReg, Address(argsBase, argDisp));
++            masm.as_sd(ScratchFloatReg, doubleArgs, doubleArgDisp);
++            masm.passABIArg(MoveOperand(doubleArgs, doubleArgDisp, MoveOperand::EFFECTIVE_ADDRESS),
+                             MoveOp::GENERAL);
++            doubleArgDisp += sizeof(double);
+             argDisp += sizeof(double);
+             break;
+         }
+     }
+ 
++    MOZ_ASSERT_IF(f.outParam != Type_Void,
++                  doubleArgDisp + sizeof(double) == outParamOffset + outParamSize);
++
+     // Copy the implicit outparam, if any.
+-    if (outReg != InvalidReg)
+-        masm.passABIArg(outReg);
++    if (f.outParam != Type_Void) {
++        masm.passABIArg(MoveOperand(doubleArgs, outParamOffset, MoveOperand::EFFECTIVE_ADDRESS),
++                            MoveOp::GENERAL);
++    }
+ 
+     masm.callWithABI(f.wrapped);
+ 
+@@ -793,23 +800,17 @@ JitRuntime::generateVMWrapper(JSContext *cx, const VMFunction &f)
+         MOZ_ASSUME_UNREACHABLE("unknown failure kind");
+     }
+ 
++    masm.freeStack(outParamOffset);
++
+     // Load the outparam and free any allocated stack.
+     switch (f.outParam) {
+       case Type_Handle:
+-        if (f.outParamRootType == VMFunction::RootValue) {
+-            masm.alignPointerUp(StackPointer, SecondScratchReg, StackAlignment);
+-            masm.loadValue(Address(SecondScratchReg, 0), JSReturnOperand);
+-            masm.freeStack((StackAlignment - sizeof(uintptr_t)) + sizeof(Value));
+-        }
+-        else {
+-            masm.popRooted(f.outParamRootType, ReturnReg, JSReturnOperand);
+-        }
++        masm.popRooted(f.outParamRootType, ReturnReg, JSReturnOperand);
+         break;
+ 
+       case Type_Value:
+-        masm.alignPointerUp(StackPointer, SecondScratchReg, StackAlignment);
+-        masm.loadValue(Address(SecondScratchReg, 0), JSReturnOperand);
+-        masm.freeStack((StackAlignment - sizeof(uintptr_t)) + sizeof(Value));
++        masm.loadValue(Address(StackPointer, 0), JSReturnOperand);
++        masm.freeStack(sizeof(Value));
+         break;
+ 
+       case Type_Int32:
+@@ -826,19 +827,20 @@ JitRuntime::generateVMWrapper(JSContext *cx, const VMFunction &f)
+ 
+       case Type_Double:
+         if (cx->runtime()->jitSupportsFloatingPoint) {
+-            masm.alignPointerUp(StackPointer, SecondScratchReg, StackAlignment);
+-            // Address is aligned, so we can use as_ld.
+-            masm.as_ld(ReturnFloatReg, SecondScratchReg, 0);
++            masm.as_ld(ReturnFloatReg, StackPointer, 0);
+         } else {
+             masm.assumeUnreachable("Unable to load into float reg, with no FP support.");
+         }
+-        masm.freeStack((StackAlignment - sizeof(uintptr_t)) + sizeof(double));
++        masm.freeStack(sizeof(double));
+         break;
+ 
+       default:
+         MOZ_ASSERT(f.outParam == Type_Void);
+         break;
+     }
++
++    masm.restoreStackPointer();
++
+     masm.leaveExitFrame();
+     masm.retn(Imm32(sizeof(IonExitFrameLayout) +
+                     f.explicitStackSlots() * sizeof(uintptr_t) +
+diff --git a/js/src/jit/shared/MacroAssembler-x86-shared.cpp b/js/src/jit/shared/MacroAssembler-x86-shared.cpp
+index ff06005..f80991b 100644
+--- a/js/src/jit/shared/MacroAssembler-x86-shared.cpp
++++ b/js/src/jit/shared/MacroAssembler-x86-shared.cpp
+@@ -146,6 +146,18 @@ MacroAssemblerX86Shared::callWithExitFrame(JitCode *target)
+     call(target);
+ }
+ 
++void
++MacroAssembler::alignFrameForICArguments(AfterICSaveLive &aic)
++{
++    // Exists for MIPS compatibility.
++}
++
++void
++MacroAssembler::restoreFrameAlignmentForICArguments(AfterICSaveLive &aic)
++{
++    // Exists for MIPS compatibility.
++}
++
+ bool
+ MacroAssemblerX86Shared::buildOOLFakeExitFrame(void *fakeReturnAddr)
+ {
+diff --git a/js/src/moz.build b/js/src/moz.build
+index e197c4d..0035601 100644
+--- a/js/src/moz.build
++++ b/js/src/moz.build
+@@ -375,6 +375,23 @@ if CONFIG['ENABLE_ION']:
+             UNIFIED_SOURCES += [
+                 'jit/arm/Simulator-arm.cpp'
+             ]
++    elif CONFIG['JS_CODEGEN_MIPS']:
++        UNIFIED_SOURCES += [
++            'jit/mips/Architecture-mips.cpp',
++            'jit/mips/Assembler-mips.cpp',
++            'jit/mips/Bailouts-mips.cpp',
++            'jit/mips/BaselineCompiler-mips.cpp',
++            'jit/mips/BaselineIC-mips.cpp',
++            'jit/mips/CodeGenerator-mips.cpp',
++            'jit/mips/Lowering-mips.cpp',
++            'jit/mips/MacroAssembler-mips.cpp',
++            'jit/mips/MoveEmitter-mips.cpp',
++            'jit/mips/Trampoline-mips.cpp',
++        ]
++        if CONFIG['JS_MIPS_SIMULATOR']:
++            UNIFIED_SOURCES += [
++                'jit/mips/Simulator-mips.cpp'
++            ]
+ 
+ if CONFIG['OS_ARCH'] == 'WINNT':
+     SOURCES += [
+diff --git a/js/src/tests/lib/jittests.py b/js/src/tests/lib/jittests.py
+index 852ae63..3b60c2d 100755
+--- a/js/src/tests/lib/jittests.py
++++ b/js/src/tests/lib/jittests.py
+@@ -665,7 +665,7 @@ def get_remote_results(tests, device, prefix, options):
+ def push_libs(options, device):
+     # This saves considerable time in pushing unnecessary libraries
+     # to the device but needs to be updated if the dependencies change.
+-    required_libs = ['libnss3.so', 'libmozglue.so']
++    required_libs = ['libnss3.so', 'libmozglue.so', 'libnspr4.so', 'libplc4.so', 'libplds4.so']
+ 
+     for file in os.listdir(options.local_lib):
+         if file in required_libs:
+-- 
+2.2.2
+

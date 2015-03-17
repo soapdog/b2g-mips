@@ -1,0 +1,38 @@
+From 1d139bf2b5a936b34c2449808a8e86f606533d70 Mon Sep 17 00:00:00 2001
+From: Lazar Trsic <Lazar.Trsic@imgtec.com>
+Date: Mon, 26 Jan 2015 16:26:33 +0100
+Subject: [PATCH] [MIPS] Wake-up mips emulator from suspend.
+
+MIPS emulator cannot wake-up from suspend. This workaround in
+EventHub.cpp does not allow release of KeyEvents wake lock and
+allows emulator to go to suspend state without suspending the CPU.
+---
+ widget/gonk/libui/EventHub.cpp | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/widget/gonk/libui/EventHub.cpp b/widget/gonk/libui/EventHub.cpp
+index 89581bc..3265660 100644
+--- a/widget/gonk/libui/EventHub.cpp
++++ b/widget/gonk/libui/EventHub.cpp
+@@ -909,11 +909,17 @@ size_t EventHub::getEvents(int timeoutMillis, RawEvent* buffer, size_t bufferSiz
+         mPendingEventIndex = 0;
+ 
+         mLock.unlock(); // release lock before poll, must be before release_wake_lock
+-        release_wake_lock(WAKE_LOCK_ID);
+ 
++	// Qemu for MIPS cannot wake up from suspend, so we don't release wakelock as a workaround.
++#ifndef __mips__
++        release_wake_lock(WAKE_LOCK_ID);
++#endif
+         int pollResult = epoll_wait(mEpollFd, mPendingEventItems, EPOLL_MAX_EVENTS, timeoutMillis);
+ 
++#ifndef __mips__
+         acquire_wake_lock(PARTIAL_WAKE_LOCK, WAKE_LOCK_ID);
++#endif
++
+         mLock.lock(); // reacquire lock after poll, must be after acquire_wake_lock
+ 
+         if (pollResult == 0) {
+-- 
+2.2.2
+

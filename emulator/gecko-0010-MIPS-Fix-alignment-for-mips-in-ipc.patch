@@ -1,0 +1,37 @@
+From 6d7300ceb6f680663c3f6343d44afda62ec61aea Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <Milan.Jelisavcic@imgtec.com>
+Date: Mon, 26 Jan 2015 19:30:08 +0100
+Subject: [PATCH] [MIPS] Fix alignment for mips in ipc.
+
+---
+ ipc/ipdl/ipdl/lower.py | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/ipc/ipdl/ipdl/lower.py b/ipc/ipdl/ipdl/lower.py
+index 2ad4ba1..7d0b19e 100644
+--- a/ipc/ipdl/ipdl/lower.py
++++ b/ipc/ipdl/ipdl/lower.py
+@@ -2141,8 +2141,10 @@ def _generateCxxUnion(ud):
+     refClsType = Type(ud.name, ref=1)
+     typetype = Type('Type')
+     valuetype = Type('Value')
++    dummytype = Type('char')
+     mtypevar = ExprVar('mType')
+     mvaluevar = ExprVar('mValue')
++    mdummyvar = ExprVar('mDummy[8-((sizeof(union Value)+sizeof(enum Type))%8)]')
+     maybedtorvar = ExprVar('MaybeDestroy')
+     assertsanityvar = ExprVar('AssertSanity')
+     tnonevar = ExprVar('T__None')
+@@ -2450,7 +2452,8 @@ def _generateCxxUnion(ud):
+     cls.addstmts([
+         Label.PRIVATE,
+         StmtDecl(Decl(valuetype, mvaluevar.name)),
+-        StmtDecl(Decl(typetype, mtypevar.name))
++        StmtDecl(Decl(typetype, mtypevar.name)),
++        StmtDecl(Decl(dummytype, mdummyvar.name))
+     ])
+ 
+     return forwarddeclstmts, cls
+-- 
+2.2.2
+

@@ -1,0 +1,29 @@
+From 8a995b75b0501c00725590598bc4c427ed0501b0 Mon Sep 17 00:00:00 2001
+From: Lazar Trsic <Lazar.Trsic@imgtec.com>
+Date: Mon, 26 Jan 2015 16:50:39 +0100
+Subject: [PATCH] [MIPS] Define MIPS architecture in chromium types header
+ file.
+
+---
+ gfx/ycbcr/chromium_types.h | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/gfx/ycbcr/chromium_types.h b/gfx/ycbcr/chromium_types.h
+index 48708a2..46ade2a 100644
+--- a/gfx/ycbcr/chromium_types.h
++++ b/gfx/ycbcr/chromium_types.h
+@@ -50,6 +50,11 @@ typedef uint32_t uint32;
+ #define ARCH_CPU_AARCH64_FAMILY 1
+ #define ARCH_CPU_AARCH64 1
+ #define ARCH_CPU_64_BITS 1
++#elif defined(__MIPSEL__)
++#define ARCH_CPU_MIPS_FAMILY 1
++#define ARCH_CPU_MIPSEL 1
++#define ARCH_CPU_32_BITS 1
++#define ARCH_CPU_LITTLE_ENDIAN
+ #else
+ #warning Please add support for your architecture in chromium_types.h
+ #endif
+-- 
+2.2.2
+

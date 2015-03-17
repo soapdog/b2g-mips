@@ -1,0 +1,89 @@
+From dd288e7119d2caca0ebe6f0f447ac5cbef34dafd Mon Sep 17 00:00:00 2001
+From: Lazar Trsic <lazar.trsic@imgtec.com>
+Date: Tue, 27 Jan 2015 20:02:15 +0100
+Subject: [PATCH] [MIPS] Add necessary bluetooth configuration for npm801
+
+---
+ device.mk                                |  6 ++++--
+ libbt/conf/ingenic/npm801/Android.mk     | 14 ++++++++++++++
+ libbt/conf/ingenic/npm801/bt_vendor.conf |  6 ++++++
+ libbt/include/vnd_npm801.txt             |  8 ++++++++
+ 4 files changed, 32 insertions(+), 2 deletions(-)
+ create mode 100644 libbt/conf/ingenic/npm801/Android.mk
+ create mode 100644 libbt/conf/ingenic/npm801/bt_vendor.conf
+ create mode 100644 libbt/include/vnd_npm801.txt
+
+diff --git a/device.mk b/device.mk
+index 25578e3..c7237cf 100644
+--- a/device.mk
++++ b/device.mk
+@@ -39,7 +39,8 @@ PRODUCT_PACKAGES += \
+     sensors.xb4780       \
+     lights.xb4780        \
+     libdmmu              \
+-	audio.a2dp.default   \
++    audio.a2dp.default   \
++    bluetooth.default    \
+     libjzipu
+ 
+ $(call inherit-product, frameworks/native/build/tablet-dalvik-heap.mk)
+@@ -87,7 +88,8 @@ PRODUCT_COPY_FILES += \
+ PRODUCT_COPY_FILES += \
+     system/bluetooth/data/main.le.conf:system/etc/bluetooth/main.conf \
+     system/bluetooth/data/input.conf:system/etc/bluetooth/input.conf \
+-    system/bluetooth/data/audio.conf:system/etc/bluetooth/audio.conf
++    system/bluetooth/data/audio.conf:system/etc/bluetooth/audio.conf \
++    $(LOCAL_PATH)/libbt/conf/ingenic/npm801/bt_vendor.conf:system/etc/bluetooth/bt_vendor.conf
+ 
+ PRODUCT_COPY_FILES += \
+     $(LOCAL_PATH)/wifi/IW/bcm4330/fw_bcm4330b2.bin:system/lib/wifi/firmware/iw8101/fw_bcmdhd.bin \
+diff --git a/libbt/conf/ingenic/npm801/Android.mk b/libbt/conf/ingenic/npm801/Android.mk
+new file mode 100644
+index 0000000..974e213
+--- /dev/null
++++ b/libbt/conf/ingenic/npm801/Android.mk
+@@ -0,0 +1,14 @@
++LOCAL_PATH := $(call my-dir)
++
++include $(CLEAR_VARS)
++
++LOCAL_MODULE := bt_vendor.conf
++LOCAL_MODULE_CLASS := ETC
++LOCAL_MODULE_PATH := $(TARGET_OUT)/etc/bluetooth
++
++LOCAL_MODULE_TAGS := eng
++
++LOCAL_SRC_FILES := $(LOCAL_MODULE)
++
++include $(BUILD_PREBUILT)
++
+diff --git a/libbt/conf/ingenic/npm801/bt_vendor.conf b/libbt/conf/ingenic/npm801/bt_vendor.conf
+new file mode 100644
+index 0000000..bfe69ca
+--- /dev/null
++++ b/libbt/conf/ingenic/npm801/bt_vendor.conf
+@@ -0,0 +1,6 @@
++# UART device port where Bluetooth controller is attached
++UartPort = /dev/ttyS2
++
++# Firmware patch file location
++FwPatchFilePath = /etc/firmware/bcm4330/
++FwPatchFileName = BCM4330.hcd
+\ No newline at end of file
+diff --git a/libbt/include/vnd_npm801.txt b/libbt/include/vnd_npm801.txt
+new file mode 100644
+index 0000000..7b5652d
+--- /dev/null
++++ b/libbt/include/vnd_npm801.txt
+@@ -0,0 +1,8 @@
++BLUETOOTH_UART_DEVICE_PORT = "/dev/ttyS2"
++FW_PATCHFILE_LOCATION = "/etc/firmware/bcm4330/"
++LPM_IDLE_TIMEOUT_MULTIPLE = 5
++BTVND_DBG = FALSE
++BTHW_DBG = TRUE
++VNDUSERIAL_DBG = FALSE
++UPIO_DBG = FALSE
++UART_TARGET_BAUD_RATE = 3000000
+-- 
+2.2.2
+

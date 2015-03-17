@@ -1,0 +1,32 @@
+From 44af687ebeb718b04124a135802e8fd0c93a33d1 Mon Sep 17 00:00:00 2001
+From: Lazar Trsic <lazar.trsic@imgtec.com>
+Date: Tue, 27 Jan 2015 11:10:20 +0100
+Subject: [PATCH] [MIPS] Add Network Manager in init.rc script.
+
+---
+ dom/system/gonk/NetworkManager.js |    2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/dom/system/gonk/NetworkManager.js b/dom/system/gonk/NetworkManager.js
+index a2b0e68..5aaabc8 100644
+--- a/dom/system/gonk/NetworkManager.js
++++ b/dom/system/gonk/NetworkManager.js
+@@ -362,6 +362,7 @@ NetworkManager.prototype = {
+ 
+   getNetworkId: function(network) {
+     let id = "device";
++#ifdef MOZ_B2G_RIL
+     if (this.isNetworkTypeMobile(network.type)) {
+       if (!(network instanceof Ci.nsIRilNetworkInterface)) {
+         throw Components.Exception("Mobile network not an nsIRilNetworkInterface",
+@@ -369,6 +370,7 @@ NetworkManager.prototype = {
+       }
+       id = "ril" + network.serviceId;
+     }
++#endif
+ 
+     return id + "-" + network.type;
+   },
+-- 
+1.7.9.5
+

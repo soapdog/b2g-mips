@@ -1,0 +1,33 @@
+From a2146db4c2f4165dda2b10b4e233d170ebb3b336 Mon Sep 17 00:00:00 2001
+From: Lazar Trsic <lazar.trsic@imgtec.com>
+Date: Tue, 27 Jan 2015 11:09:43 +0100
+Subject: [PATCH] [MIPS] Add Network Manager in init.rc script.
+
+---
+ init.b2g.rc |   10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/init.b2g.rc b/init.b2g.rc
+index c7a9b39..017fb4a 100644
+--- a/init.b2g.rc
++++ b/init.b2g.rc
+@@ -16,6 +16,16 @@ service rilproxy /system/bin/rilproxy
+     user root
+     group radio
+ 
++service rilproxy1 /system/bin/rilproxy -c 1
++    class main
++    socket rilproxy1 stream 660 root system
++    disabled
++    user root
++    group radio
++
++on property:ro.moz.ril.numclients=2
++    start rilproxy1
++
+ service nfcd /system/bin/nfcd
+     class main
+     oneshot
+-- 
+1.7.9.5
+

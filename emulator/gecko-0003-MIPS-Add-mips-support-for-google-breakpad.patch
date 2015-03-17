@@ -1,0 +1,3302 @@
+From c11c51597c8b58d8ba17b315a64ced6c3f66b93c Mon Sep 17 00:00:00 2001
+From: Gordana Cmiljanovic <gordana.cmiljanovic@imgtec.com>
+Date: Mon, 26 Jan 2015 16:06:34 +0100
+Subject: [PATCH] [MIPS] Add mips support for google-breakpad.
+
+---
+ toolkit/crashreporter/google-breakpad/Makefile.am  |  12 +
+ .../google-breakpad/android/run-checks.sh          |   3 +
+ .../src/client/linux/handler/exception_handler.cc  |  10 +-
+ .../src/client/linux/handler/exception_handler.h   |   4 +-
+ .../linux/handler/exception_handler_unittest.cc    |  37 +-
+ .../linux/minidump_writer/linux_core_dumper.cc     |   3 +
+ .../client/linux/minidump_writer/linux_dumper.h    |   8 +-
+ .../linux_dumper_unittest_helper.cc                |   2 +
+ .../linux/minidump_writer/linux_ptrace_dumper.cc   |  14 +
+ .../linux_ptrace_dumper_unittest.cc                |   5 +-
+ .../linux/minidump_writer/minidump_writer.cc       |  83 ++-
+ .../minidump_writer/minidump_writer_unittest.cc    |   6 +
+ .../google-breakpad/src/client/moz.build           |   1 +
+ .../google-breakpad/src/common/Makefile.in         |   3 +
+ .../src/common/android/breakpad_getcontext.S       |  79 +++
+ .../common/android/breakpad_getcontext_unittest.cc |  13 +
+ .../src/common/android/include/elf.h               |   4 +
+ .../src/common/android/include/sgidefs.h           |  51 ++
+ .../src/common/android/include/sys/user.h          |  19 +-
+ .../src/common/android/ucontext_constants.h        |   7 +-
+ .../src/common/dwarf/dwarf2reader.cc               |  18 +-
+ .../src/common/dwarf_cfi_to_module.cc              |  17 +
+ .../src/common/dwarf_cfi_to_module.h               |   3 +
+ .../src/common/linux/dump_symbols.cc               |  10 +-
+ .../src/google_breakpad/common/minidump_cpu_mips.h | 178 ++++++
+ .../src/google_breakpad/common/minidump_format.h   |   2 +-
+ .../src/google_breakpad/processor/minidump.h       |   2 +
+ .../google_breakpad/processor/stack_frame_cpu.h    |  66 ++
+ .../google-breakpad/src/processor/minidump.cc      | 133 ++++
+ .../src/processor/minidump_processor.cc            |   5 +
+ .../src/processor/minidump_stackwalk.cc            |  59 +-
+ .../src/processor/minidump_unittest.cc             | 113 ++++
+ .../google-breakpad/src/processor/moz.build        |   1 +
+ .../google-breakpad/src/processor/stackwalker.cc   |   7 +
+ .../src/processor/stackwalker_address_list.cc      |  92 +++
+ .../src/processor/stackwalker_address_list.h       |  72 +++
+ .../processor/stackwalker_address_list_unittest.cc | 197 ++++++
+ .../src/processor/stackwalker_mips.cc              | 356 +++++++++++
+ .../src/processor/stackwalker_mips.h               |  85 +++
+ .../src/processor/stackwalker_mips_unittest.cc     | 697 +++++++++++++++++++++
+ .../src/processor/synth_minidump.cc                |  35 ++
+ .../google-breakpad/src/processor/synth_minidump.h |   1 +
+ .../src/third_party/lss/linux_syscall_support.h    |   6 +-
+ .../src/tools/linux/md2core/minidump-2-core.cc     |  32 +-
+ 44 files changed, 2517 insertions(+), 34 deletions(-)
+ create mode 100644 toolkit/crashreporter/google-breakpad/src/common/android/include/sgidefs.h
+ create mode 100644 toolkit/crashreporter/google-breakpad/src/google_breakpad/common/minidump_cpu_mips.h
+ create mode 100644 toolkit/crashreporter/google-breakpad/src/processor/stackwalker_address_list.cc
+ create mode 100644 toolkit/crashreporter/google-breakpad/src/processor/stackwalker_address_list.h
+ create mode 100644 toolkit/crashreporter/google-breakpad/src/processor/stackwalker_address_list_unittest.cc
+ create mode 100644 toolkit/crashreporter/google-breakpad/src/processor/stackwalker_mips.cc
+ create mode 100644 toolkit/crashreporter/google-breakpad/src/processor/stackwalker_mips.h
+ create mode 100644 toolkit/crashreporter/google-breakpad/src/processor/stackwalker_mips_unittest.cc
+
+diff --git a/toolkit/crashreporter/google-breakpad/Makefile.am b/toolkit/crashreporter/google-breakpad/Makefile.am
+index 8649816..6fbfbb3 100644
+--- a/toolkit/crashreporter/google-breakpad/Makefile.am
++++ b/toolkit/crashreporter/google-breakpad/Makefile.am
+@@ -191,6 +191,10 @@ src_libbreakpad_a_SOURCES = \
+ 	src/processor/stackwalker_amd64.h \
+ 	src/processor/stackwalker_arm.cc \
+ 	src/processor/stackwalker_arm.h \
++	src/processor/stackwalker_address_list.cc \
++	src/processor/stackwalker_address_list.h \
++	src/processor/stackwalker_mips.cc \
++	src/processor/stackwalker_mips.h \
+ 	src/processor/stackwalker_ppc.cc \
+ 	src/processor/stackwalker_ppc.h \
+ 	src/processor/stackwalker_sparc.cc \
+@@ -285,6 +289,8 @@ check_PROGRAMS += \
+ 	src/processor/range_map_unittest \
+ 	src/processor/stackwalker_amd64_unittest \
+ 	src/processor/stackwalker_arm_unittest \
++	src/processor/stackwalker_address_list_unittest \
++	src/processor/stackwalker_mips_unittest \
+ 	src/processor/stackwalker_x86_unittest \
+ 	src/processor/synth_minidump_unittest
+ endif
+@@ -620,6 +626,8 @@ src_processor_exploitability_unittest_LDADD = \
+ 	src/processor/stackwalker.o \
+ 	src/processor/stackwalker_amd64.o \
+ 	src/processor/stackwalker_arm.o \
++	src/processor/stackwalker_address_list.o \
++	src/processor/stackwalker_mips.o \
+ 	src/processor/stackwalker_ppc.o \
+ 	src/processor/stackwalker_sparc.o \
+ 	src/processor/stackwalker_x86.o \
+@@ -708,6 +716,8 @@ src_processor_minidump_processor_unittest_LDADD = \
+ 	src/processor/stackwalker.o \
+ 	src/processor/stackwalker_amd64.o \
+ 	src/processor/stackwalker_arm.o \
++	src/processor/stackwalker_address_list.o \
++	src/processor/stackwalker_mips.o \
+ 	src/processor/stackwalker_ppc.o \
+ 	src/processor/stackwalker_sparc.o \
+ 	src/processor/stackwalker_x86.o \
+@@ -832,6 +842,8 @@ src_processor_stackwalker_selftest_LDADD = \
+ 	src/processor/stackwalker.o \
+ 	src/processor/stackwalker_amd64.o \
+ 	src/processor/stackwalker_arm.o \
++	src/processor/stackwalker_address_list.o \
++	src/processor/stackwalker_mips.o \
+ 	src/processor/stackwalker_ppc.o \
+ 	src/processor/stackwalker_sparc.o \
+ 	src/processor/stackwalker_x86.o \
+diff --git a/toolkit/crashreporter/google-breakpad/android/run-checks.sh b/toolkit/crashreporter/google-breakpad/android/run-checks.sh
+index 400f756..51d2d50 100755
+--- a/toolkit/crashreporter/google-breakpad/android/run-checks.sh
++++ b/toolkit/crashreporter/google-breakpad/android/run-checks.sh
+@@ -326,6 +326,9 @@ case $ARCH in
+   x86)
+     GNU_CONFIG=i686-linux-android
+     ;;
++  mips)
++    GNU_CONFIG=mipsel-linux-android
++    ;;
+   *)
+     GNU_CONFIG="$ARCH-linux-android"
+     ;;
+diff --git a/toolkit/crashreporter/google-breakpad/src/client/linux/handler/exception_handler.cc b/toolkit/crashreporter/google-breakpad/src/client/linux/handler/exception_handler.cc
+index df958fb..77a6a57 100644
+--- a/toolkit/crashreporter/google-breakpad/src/client/linux/handler/exception_handler.cc
++++ b/toolkit/crashreporter/google-breakpad/src/client/linux/handler/exception_handler.cc
+@@ -394,8 +394,10 @@ bool ExceptionHandler::HandleSignal(int sig, siginfo_t* info, void* uc) {
+   CrashContext context;
+   memcpy(&context.siginfo, info, sizeof(siginfo_t));
+   memcpy(&context.context, uc, sizeof(struct ucontext));
+-#if !defined(__ARM_EABI__)
++#if !defined(__ARM_EABI__) && !defined(__mips__)
+   // FP state is not part of user ABI on ARM Linux.
++  // In case of MIPS Linux FP state is already part of struct ucontext
++  // and 'float_state' is not a member of CrashContext.
+   struct ucontext *uc_ptr = (struct ucontext*)uc;
+   if (uc_ptr->uc_mcontext.fpregs) {
+     memcpy(&context.float_state,
+@@ -570,7 +572,8 @@ bool ExceptionHandler::WriteMinidump() {
+   int getcontext_result = getcontext(&context.context);
+   if (getcontext_result)
+     return false;
+-#if !defined(__ARM_EABI__)
++
++#if !defined(__ARM_EABI__) && !defined(__mips__)
+   // FPU state is not part of ARM EABI ucontext_t.
+   memcpy(&context.float_state, context.context.uc_mcontext.fpregs,
+          sizeof(context.float_state));
+@@ -589,6 +592,9 @@ bool ExceptionHandler::WriteMinidump() {
+ #elif defined(__arm__)
+   context.siginfo.si_addr =
+       reinterpret_cast<void*>(context.context.uc_mcontext.arm_pc);
++#elif defined(__mips__)
++  context.siginfo.si_addr =
++      reinterpret_cast<void*>(context.context.uc_mcontext.pc);
+ #else
+ #error "This code has not been ported to your platform yet."
+ #endif
+diff --git a/toolkit/crashreporter/google-breakpad/src/client/linux/handler/exception_handler.h b/toolkit/crashreporter/google-breakpad/src/client/linux/handler/exception_handler.h
+index c0039bc..b57f58d 100644
+--- a/toolkit/crashreporter/google-breakpad/src/client/linux/handler/exception_handler.h
++++ b/toolkit/crashreporter/google-breakpad/src/client/linux/handler/exception_handler.h
+@@ -190,8 +190,10 @@ class ExceptionHandler {
+     siginfo_t siginfo;
+     pid_t tid;  // the crashing thread.
+     struct ucontext context;
+-#if !defined(__ARM_EABI__)
++#if !defined(__ARM_EABI__) && !defined(__mips__)
+     // #ifdef this out because FP state is not part of user ABI for Linux ARM.
++    // In case of MIPS Linux FP state is already part of struct ucontext
++    // so 'float_state' is not required.
+     struct _libc_fpstate float_state;
+ #endif
+   };
+diff --git a/toolkit/crashreporter/google-breakpad/src/client/linux/handler/exception_handler_unittest.cc b/toolkit/crashreporter/google-breakpad/src/client/linux/handler/exception_handler_unittest.cc
+index 0ba5216..712d145 100644
+--- a/toolkit/crashreporter/google-breakpad/src/client/linux/handler/exception_handler_unittest.cc
++++ b/toolkit/crashreporter/google-breakpad/src/client/linux/handler/exception_handler_unittest.cc
+@@ -35,6 +35,9 @@
+ #include <sys/socket.h>
+ #include <sys/uio.h>
+ #include <sys/wait.h>
++#if defined(__mips__)
++#include <sys/cachectl.h>
++#endif
+ 
+ #include <string>
+ 
+@@ -55,7 +58,7 @@ using namespace google_breakpad;
+ namespace {
+ 
+ // Flush the instruction cache for a given memory range.
+-// Only required on ARM.
++// Only required on ARM and mips.
+ void FlushInstructionCache(const char* memory, uint32_t memory_size) {
+ #if defined(__arm__)
+   long begin = reinterpret_cast<long>(memory);
+@@ -72,6 +75,18 @@ void FlushInstructionCache(const char* memory, uint32_t memory_size) {
+ # else
+ #   error "Your operating system is not supported yet"
+ # endif
++#elif defined(__mips__)
++# if defined(__ANDROID__)
++  // Provided by Android's <unistd.h>
++  long begin = reinterpret_cast<long>(memory);
++  long end = begin + static_cast<long>(memory_size);
++  cacheflush(begin, end, 0);
++# elif defined(__linux__)
++  // See http://www.linux-mips.org/wiki/Cacheflush_Syscall.
++  cacheflush(const_cast<char*>(memory), memory_size, ICACHE);
++# else
++#   error "Your operating system is not supported yet"
++# endif
+ #endif
+ }
+ 
+@@ -446,8 +461,13 @@ TEST(ExceptionHandlerTest, InstructionPointerMemory) {
+   // data from the minidump afterwards.
+   const uint32_t kMemorySize = 256;  // bytes
+   const int kOffset = kMemorySize / 2;
++#if defined(__mips__)
++  // mfc2 zero,Impl - usually illegal in userspace.
++  const unsigned char instructions[] = { 0x48, 0x00, 0x00, 0x48 };
++#else
+   // This crashes with SIGILL on x86/x86-64/arm.
+   const unsigned char instructions[] = { 0xff, 0xff, 0xff, 0xff };
++#endif
+ 
+   const pid_t child = fork();
+   if (child == 0) {
+@@ -539,8 +559,13 @@ TEST(ExceptionHandlerTest, InstructionPointerMemoryMinBound) {
+   // data from the minidump afterwards.
+   const uint32_t kMemorySize = 256;  // bytes
+   const int kOffset = 0;
++#if defined(__mips__)
++  // mfc2 zero,Impl - usually illegal in userspace.
++  const unsigned char instructions[] = { 0x48, 0x00, 0x00, 0x48 };
++#else
+   // This crashes with SIGILL on x86/x86-64/arm.
+   const unsigned char instructions[] = { 0xff, 0xff, 0xff, 0xff };
++#endif
+ 
+   const pid_t child = fork();
+   if (child == 0) {
+@@ -609,10 +634,10 @@ TEST(ExceptionHandlerTest, InstructionPointerMemoryMinBound) {
+   const uint8_t* bytes = region->GetMemory();
+   ASSERT_TRUE(bytes);
+ 
+-  uint8_t suffix_bytes[kMemorySize / 2 - sizeof(instructions)];
++  uint8_t suffix_bytes[kMemorySize / 2 - sizeof(kIllegalInstruction)];
+   memset(suffix_bytes, 0, sizeof(suffix_bytes));
+-  EXPECT_TRUE(memcmp(bytes + kOffset, instructions, sizeof(instructions)) == 0);
+-  EXPECT_TRUE(memcmp(bytes + kOffset + sizeof(instructions),
++  EXPECT_TRUE(memcmp(bytes + kOffset, kIllegalInstruction, sizeof(kIllegalInstruction)) == 0);
++  EXPECT_TRUE(memcmp(bytes + kOffset + sizeof(kIllegalInstruction),
+                      suffix_bytes, sizeof(suffix_bytes)) == 0);
+   unlink(minidump_path.c_str());
+ }
+@@ -630,9 +655,7 @@ TEST(ExceptionHandlerTest, InstructionPointerMemoryMaxBound) {
+   // if a smaller size is requested, and this test wants to
+   // test the upper bound of the memory range.
+   const uint32_t kMemorySize = 4096;  // bytes
+-  // This crashes with SIGILL on x86/x86-64/arm.
+-  const unsigned char instructions[] = { 0xff, 0xff, 0xff, 0xff };
+-  const int kOffset = kMemorySize - sizeof(instructions);
++  const int kOffset = kMemorySize - sizeof(kIllegalInstruction);
+ 
+   const pid_t child = fork();
+   if (child == 0) {
+diff --git a/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/linux_core_dumper.cc b/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/linux_core_dumper.cc
+index 47cc26c..f5b19d1 100644
+--- a/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/linux_core_dumper.cc
++++ b/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/linux_core_dumper.cc
+@@ -99,6 +99,9 @@ bool LinuxCoreDumper::GetThreadInfoByIndex(size_t index, ThreadInfo* info) {
+   memcpy(&stack_pointer, &info->regs.rsp, sizeof(info->regs.rsp));
+ #elif defined(__ARM_EABI__)
+   memcpy(&stack_pointer, &info->regs.ARM_sp, sizeof(info->regs.ARM_sp));
++#elif defined(__mips__)
++  stack_pointer = 
++      reinterpret_cast<uint8_t*>(info->regs.regs[MD_CONTEXT_MIPS_REG_SP]);
+ #else
+ #error "This code hasn't been ported to your platform yet."
+ #endif
+diff --git a/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/linux_dumper.h b/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/linux_dumper.h
+index a4a3ab5..2bb4cac 100644
+--- a/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/linux_dumper.h
++++ b/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/linux_dumper.h
+@@ -54,7 +54,7 @@ typedef typeof(((struct user*) 0)->u_debugreg[0]) debugreg_t;
+ #endif
+ 
+ // Typedef for our parsing of the auxv variables in /proc/pid/auxv.
+-#if defined(__i386) || defined(__ARM_EABI__)
++#if defined(__i386) || defined(__ARM_EABI__) || defined(__mips__)
+ typedef Elf32_auxv_t elf_aux_entry;
+ #elif defined(__x86_64)
+ typedef Elf64_auxv_t elf_aux_entry;
+@@ -88,6 +88,12 @@ struct ThreadInfo {
+   // Mimicking how strace does this(see syscall.c, search for GETREGS)
+   struct user_regs regs;
+   struct user_fpregs fpregs;
++#elif defined(__mips__)
++  user_regs_struct regs;
++  user_fpregs_struct fpregs;
++  uint32_t hi[3];
++  uint32_t lo[3];
++  uint32_t dsp_control;
+ #endif
+ };
+ 
+diff --git a/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/linux_dumper_unittest_helper.cc b/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/linux_dumper_unittest_helper.cc
+index 6802069..461a6cf 100644
+--- a/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/linux_dumper_unittest_helper.cc
++++ b/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/linux_dumper_unittest_helper.cc
+@@ -47,6 +47,8 @@
+ #define TID_PTR_REGISTER "ecx"
+ #elif defined(__x86_64)
+ #define TID_PTR_REGISTER "rcx"
++#elif defined(__mips__)
++#define TID_PTR_REGISTER "$1"
+ #else
+ #error This test has not been ported to this platform.
+ #endif
+diff --git a/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/linux_ptrace_dumper.cc b/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/linux_ptrace_dumper.cc
+index 45d0f48..3256f53 100644
+--- a/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/linux_ptrace_dumper.cc
++++ b/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/linux_ptrace_dumper.cc
+@@ -208,6 +208,17 @@ bool LinuxPtraceDumper::GetThreadInfoByIndex(size_t index, ThreadInfo* info) {
+   }
+ #endif
+ 
++#if defined(__mips__)
++  for (int i = 0; i < 3; ++i) {
++    sys_ptrace(PTRACE_PEEKUSER, tid,
++               reinterpret_cast<void*>(DSP_BASE + (i * 2)), &info->hi[i]);
++    sys_ptrace(PTRACE_PEEKUSER, tid,
++               reinterpret_cast<void*>(DSP_BASE + (i * 2) + 1), &info->lo[i]);
++  }
++  sys_ptrace(PTRACE_PEEKUSER, tid,
++             reinterpret_cast<void*>(DSP_CONTROL), &info->dsp_control);
++#endif
++
+   const uint8_t* stack_pointer;
+ #if defined(__i386)
+   my_memcpy(&stack_pointer, &info->regs.esp, sizeof(info->regs.esp));
+@@ -215,6 +226,9 @@ bool LinuxPtraceDumper::GetThreadInfoByIndex(size_t index, ThreadInfo* info) {
+   my_memcpy(&stack_pointer, &info->regs.rsp, sizeof(info->regs.rsp));
+ #elif defined(__ARM_EABI__)
+   my_memcpy(&stack_pointer, &info->regs.ARM_sp, sizeof(info->regs.ARM_sp));
++#elif defined(__mips__)
++  stack_pointer =
++      reinterpret_cast<uint8_t*>(info->regs.regs[MD_CONTEXT_MIPS_REG_SP]);
+ #else
+ #error "This code hasn't been ported to your platform yet."
+ #endif
+diff --git a/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/linux_ptrace_dumper_unittest.cc b/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/linux_ptrace_dumper_unittest.cc
+index db11651..b4a3b9d 100644
+--- a/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/linux_ptrace_dumper_unittest.cc
++++ b/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/linux_ptrace_dumper_unittest.cc
+@@ -243,6 +243,9 @@ TEST(LinuxPtraceDumperTest, VerifyStackReadWithMultipleThreads) {
+     pid_t *process_tid_location = (pid_t *)(one_thread.regs.ecx);
+ #elif defined(__x86_64)
+     pid_t *process_tid_location = (pid_t *)(one_thread.regs.rcx);
++#elif defined(__mips__)
++    pid_t* process_tid_location =
++    reinterpret_cast<pid_t*>(one_thread.regs.regs[1]);
+ #else
+ #error This test has not been ported to this platform.
+ #endif
+@@ -286,7 +289,7 @@ TEST(LinuxPtraceDumperTest, BuildProcPath) {
+   EXPECT_FALSE(dumper.BuildProcPath(maps_path, 123, long_node));
+ }
+ 
+-#if !defined(__ARM_EABI__)
++#if !defined(__ARM_EABI__) && !defined(__mips__)
+ // Ensure that the linux-gate VDSO is included in the mapping list.
+ TEST(LinuxPtraceDumperTest, MappingsIncludeLinuxGate) {
+   LinuxPtraceDumper dumper(getpid());
+diff --git a/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/minidump_writer.cc b/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/minidump_writer.cc
+index 34091db..dadf438 100644
+--- a/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/minidump_writer.cc
++++ b/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/minidump_writer.cc
+@@ -370,6 +370,71 @@ void CPUFillFromUContext(MDRawContextARM* out, const ucontext* uc,
+   my_memset(&out->float_save.extra, 0, sizeof(out->float_save.extra));
+ }
+ 
++#elif defined(__mips__)
++typedef MDRawContextMIPS RawContextCPU;
++
++static void CPUFillFromThreadInfo(MDRawContextMIPS* out,
++                                  const google_breakpad::ThreadInfo& info) {
++  out->context_flags = MD_CONTEXT_MIPS_FULL;
++
++  for (int i = 0; i < MD_CONTEXT_MIPS_GPR_COUNT; ++i)
++    out->iregs[i] = info.regs.regs[i];
++
++  out->mdhi = info.regs.hi;
++  out->mdlo = info.regs.lo;
++
++  for (int i = 0; i < MD_CONTEXT_MIPS_DSP_COUNT; ++i) {
++    out->hi[i] = info.hi[i];
++    out->lo[i] = info.lo[i];
++  }
++  out->dsp_control = info.dsp_control;
++
++  out->epc = info.regs.epc;
++  out->badvaddr = info.regs.badvaddr;
++  out->status = info.regs.status;
++  out->cause = info.regs.cause;
++
++  for (int i = 0; i < MD_FLOATINGSAVEAREA_MIPS_FPR_COUNT; ++i)
++    out->float_save.regs[i] = info.fpregs.regs[i];
++
++  out->float_save.fpcsr = info.fpregs.fpcsr;
++  out->float_save.fir = info.fpregs.fir;
++}
++
++static void CPUFillFromUContext(MDRawContextMIPS* out, const ucontext* uc,
++                                const struct _libc_fpstate* fpregs) {
++  out->context_flags = MD_CONTEXT_MIPS_FULL;
++
++  for (int i = 0; i < MD_CONTEXT_MIPS_GPR_COUNT; ++i)
++    out->iregs[i] = uc->uc_mcontext.gregs[i];
++
++  out->mdhi = uc->uc_mcontext.mdhi;
++  out->mdlo = uc->uc_mcontext.mdlo;
++
++  out->hi[0] = uc->uc_mcontext.hi1;
++  out->hi[1] = uc->uc_mcontext.hi2;
++  out->hi[2] = uc->uc_mcontext.hi3;
++  out->lo[0] = uc->uc_mcontext.lo1;
++  out->lo[1] = uc->uc_mcontext.lo2;
++  out->lo[2] = uc->uc_mcontext.lo3;
++  out->dsp_control = uc->uc_mcontext.dsp;
++
++  out->epc = uc->uc_mcontext.pc;
++  out->badvaddr = 0;  // Not reported in signal context.
++  out->status = 0;  // Not reported in signal context.
++  out->cause = 0;  // Not reported in signal context.
++
++  for (int i = 0; i < MD_FLOATINGSAVEAREA_MIPS_FPR_COUNT; ++i)
++#if defined (__ANDROID__)
++    out->float_save.regs[i] = uc->uc_mcontext.fpregs[i];
++#else
++    out->float_save.regs[i] = uc->uc_mcontext.fpregs.fp_r.fp_dregs[i];
++#endif
++
++  out->float_save.fpcsr = uc->uc_mcontext.fpc_csr;
++  out->float_save.fir = uc->uc_mcontext.fpc_eir;  // Unused.
++}
++
+ #else
+ #error "This code has not been ported to your platform yet."
+ #endif
+@@ -401,7 +466,7 @@ class MinidumpWriter {
+       : fd_(minidump_fd),
+         path_(minidump_path),
+         ucontext_(context ? &context->context : NULL),
+-#if !defined(__ARM_EABI__)
++#if !defined(__ARM_EABI__) && !defined(__mips__)
+         float_state_(context ? &context->float_state : NULL),
+ #else
+         // TODO: fix this after fixing ExceptionHandler
+@@ -1199,6 +1264,18 @@ class MinidumpWriter {
+   uintptr_t GetInstructionPointer(const ThreadInfo& info) {
+     return info.regs.uregs[15];
+   }
++#elif defined(__mips__)
++  uintptr_t GetStackPointer() {
++    return ucontext_->uc_mcontext.gregs[MD_CONTEXT_MIPS_REG_SP];
++  }
++
++  uintptr_t GetInstructionPointer() {
++    return ucontext_->uc_mcontext.pc;
++  }
++
++  uintptr_t GetInstructionPointer(const ThreadInfo& info) {
++    return info.regs.epc;
++  }
+ #else
+ #error "This code has not been ported to your platform yet."
+ #endif
+@@ -1229,7 +1306,9 @@ class MinidumpWriter {
+ 
+     // processor_architecture should always be set, do this first
+     sys_info->processor_architecture =
+-#if defined(__i386)
++#if defined(__mips__)
++        MD_CPU_ARCHITECTURE_MIPS;
++#elif defined(__i386__)
+         MD_CPU_ARCHITECTURE_X86;
+ #elif defined(__x86_64)
+         MD_CPU_ARCHITECTURE_AMD64;
+diff --git a/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/minidump_writer_unittest.cc b/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/minidump_writer_unittest.cc
+index 7d6b866..d8a14cf 100644
+--- a/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/minidump_writer_unittest.cc
++++ b/toolkit/crashreporter/google-breakpad/src/client/linux/minidump_writer/minidump_writer_unittest.cc
+@@ -540,6 +540,12 @@ TEST(MinidumpWriterTest, InvalidStackPointer) {
+   uintptr_t invalid_stack_pointer =
+       reinterpret_cast<uintptr_t>(&context) - 1024*1024;
+   context.context.uc_mcontext.arm_sp = invalid_stack_pointer;
++#elif defined(__mips__)
++  // Try 1MB below the current stack.
++  uintptr_t invalid_stack_pointer =
++      reinterpret_cast<uintptr_t>(&context) - 1024 * 1024;
++  context.context.uc_mcontext.gregs[MD_CONTEXT_MIPS_REG_SP] = 
++      invalid_stack_pointer;
+ #else
+ # error "This code has not been ported to your platform yet."
+ #endif
+diff --git a/toolkit/crashreporter/google-breakpad/src/client/moz.build b/toolkit/crashreporter/google-breakpad/src/client/moz.build
+index 136560f..6ecf414 100644
+--- a/toolkit/crashreporter/google-breakpad/src/client/moz.build
++++ b/toolkit/crashreporter/google-breakpad/src/client/moz.build
+@@ -14,5 +14,6 @@ FINAL_LIBRARY = 'xulapp_s'
+ 
+ LOCAL_INCLUDES += [
+     '..',
++    '/toolkit/crashreporter/google-breakpad/src/common/android/include',
+ ]
+ 
+diff --git a/toolkit/crashreporter/google-breakpad/src/common/Makefile.in b/toolkit/crashreporter/google-breakpad/src/common/Makefile.in
+index 3e043e9..6060ac7 100644
+--- a/toolkit/crashreporter/google-breakpad/src/common/Makefile.in
++++ b/toolkit/crashreporter/google-breakpad/src/common/Makefile.in
+@@ -9,6 +9,9 @@ endif
+ 
+ ifeq ($(OS_TARGET),Android)
+ TARGET_LOCAL_INCLUDES += -I$(topsrcdir)/toolkit/crashreporter/google-breakpad/src/common/android/include/
++ifneq (,$(findstring mips, $(OS_TEST)))
++ASFLAGS += -I$(topsrcdir)/../bionic/libc/kernel/arch-mips
++endif
+ endif
+ 
+ # This kind of sucks.
+diff --git a/toolkit/crashreporter/google-breakpad/src/common/android/breakpad_getcontext.S b/toolkit/crashreporter/google-breakpad/src/common/android/breakpad_getcontext.S
+index 13ccd46..13f242d 100644
+--- a/toolkit/crashreporter/google-breakpad/src/common/android/breakpad_getcontext.S
++++ b/toolkit/crashreporter/google-breakpad/src/common/android/breakpad_getcontext.S
+@@ -140,6 +140,85 @@ breakpad_getcontext:
+ 
+   .size breakpad_getcontext, . - breakpad_getcontext
+ 
++#elif defined(__mips__)
++
++#if _MIPS_SIM != _ABIO32
++#error "Unsupported mips ISA. Only mips o32 is supported."
++#endif
++
++// This implementation is inspired by implementation of getcontext in glibc.
++#include <asm/asm.h>
++#include <asm/regdef.h>
++#include <asm/fpregdef.h>
++#include <asm/unistd.h> // for __NR_rt_sigprocmask
++
++#define _NSIG8 128 / 8
++#define SIG_BLOCK 1
++
++
++  .text
++LOCALS_NUM = 2	// save gp and ra on stack
++FRAME_SIZE = ((LOCALS_NUM * SZREG) + ALSZ) & ALMASK
++RA_FRAME_OFFSET = FRAME_SIZE - (1 * SZREG)
++GP_FRAME_OFFSET = FRAME_SIZE - (2 * SZREG)
++MCONTEXT_REG_SIZE = 8
++
++NESTED (breakpad_getcontext, FRAME_SIZE, ra)
++  .mask	0x00000000, 0
++  .fmask 0x00000000, 0
++
++  .set noreorder
++  .cpload t9
++  .set reorder
++
++  move a2, sp
++#define _SP a2
++
++  addiu sp, -FRAME_SIZE
++  sw ra, RA_FRAME_OFFSET(sp)
++  sw gp, GP_FRAME_OFFSET(sp)
++
++  sw s0, (16 * MCONTEXT_REG_SIZE + MCONTEXT_GREGS_OFFSET)(a0)
++  sw s1, (17 * MCONTEXT_REG_SIZE + MCONTEXT_GREGS_OFFSET)(a0)
++  sw s2, (18 * MCONTEXT_REG_SIZE + MCONTEXT_GREGS_OFFSET)(a0)
++  sw s3, (19 * MCONTEXT_REG_SIZE + MCONTEXT_GREGS_OFFSET)(a0)
++  sw s4, (20 * MCONTEXT_REG_SIZE + MCONTEXT_GREGS_OFFSET)(a0)
++  sw s5, (21 * MCONTEXT_REG_SIZE + MCONTEXT_GREGS_OFFSET)(a0)
++  sw s6, (22 * MCONTEXT_REG_SIZE + MCONTEXT_GREGS_OFFSET)(a0)
++  sw s7, (23 * MCONTEXT_REG_SIZE + MCONTEXT_GREGS_OFFSET)(a0)
++  sw _SP, (29 * MCONTEXT_REG_SIZE + MCONTEXT_GREGS_OFFSET)(a0)
++  sw fp, (30 * MCONTEXT_REG_SIZE + MCONTEXT_GREGS_OFFSET)(a0)
++  sw ra, (31 * MCONTEXT_REG_SIZE + MCONTEXT_GREGS_OFFSET)(a0)
++  sw ra, MCONTEXT_PC_OFFSET(a0)
++
++#ifdef __mips_hard_float
++  s.d fs0, (20 * MCONTEXT_REG_SIZE + MCONTEXT_FPREGS_OFFSET)(a0)
++  s.d fs1, (22 * MCONTEXT_REG_SIZE + MCONTEXT_FPREGS_OFFSET)(a0)
++  s.d fs2, (24 * MCONTEXT_REG_SIZE + MCONTEXT_FPREGS_OFFSET)(a0)
++  s.d fs3, (26 * MCONTEXT_REG_SIZE + MCONTEXT_FPREGS_OFFSET)(a0)
++  s.d fs4, (28 * MCONTEXT_REG_SIZE + MCONTEXT_FPREGS_OFFSET)(a0)
++  s.d fs5, (30 * MCONTEXT_REG_SIZE + MCONTEXT_FPREGS_OFFSET)(a0)
++
++  cfc1 v1, fcr31
++  sw v1, MCONTEXT_FPC_CSR(a0)
++#endif  // __mips_hard_float
++
++  /* rt_sigprocmask (SIG_BLOCK, NULL, &ucp->uc_sigmask, _NSIG8) */
++  li a3, _NSIG8
++  addu a2, a0, UCONTEXT_SIGMASK_OFFSET
++  move a1, zero
++  li a0, SIG_BLOCK
++  li v0, __NR_rt_sigprocmask
++  syscall
++
++  lw ra, RA_FRAME_OFFSET(sp)
++  lw gp, GP_FRAME_OFFSET(sp)
++  addiu sp, FRAME_SIZE
++  jr ra
++
++END (breakpad_getcontext)
++
++
+ #else
+ #error "This file has not been ported for your CPU!"
+ #endif
+diff --git a/toolkit/crashreporter/google-breakpad/src/common/android/breakpad_getcontext_unittest.cc b/toolkit/crashreporter/google-breakpad/src/common/android/breakpad_getcontext_unittest.cc
+index 3bafb9a..c1b69c2 100644
+--- a/toolkit/crashreporter/google-breakpad/src/common/android/breakpad_getcontext_unittest.cc
++++ b/toolkit/crashreporter/google-breakpad/src/common/android/breakpad_getcontext_unittest.cc
+@@ -69,6 +69,19 @@ TEST(AndroidUContext, GRegsOffset) {
+ 
+   ASSERT_EQ(static_cast<size_t>(UCONTEXT_FPREGS_MEM_OFFSET),
+             offsetof(ucontext_t,__fpregs_mem));
++#elif defined(__mips__)
++  ASSERT_EQ(static_cast<size_t>(MCONTEXT_GREGS_OFFSET),
++            offsetof(ucontext_t,uc_mcontext.gregs));
++
++  // PC for mips is not part of gregs.
++  ASSERT_EQ(static_cast<size_t>(MCONTEXT_PC_OFFSET),
++            offsetof(ucontext_t,uc_mcontext.pc));
++
++  ASSERT_EQ(static_cast<size_t>(MCONTEXT_FPREGS_OFFSET),
++            offsetof(ucontext_t,uc_mcontext.fpregs));
++
++  ASSERT_EQ(static_cast<size_t>(MCONTEXT_FPC_CSR),
++            offsetof(ucontext_t,uc_mcontext.fpc_csr));
+ #else
+   ASSERT_EQ(static_cast<size_t>(MCONTEXT_GREGS_OFFSET),
+             offsetof(ucontext_t,uc_mcontext.gregs));
+diff --git a/toolkit/crashreporter/google-breakpad/src/common/android/include/elf.h b/toolkit/crashreporter/google-breakpad/src/common/android/include/elf.h
+index debe30b..af50a79 100644
+--- a/toolkit/crashreporter/google-breakpad/src/common/android/include/elf.h
++++ b/toolkit/crashreporter/google-breakpad/src/common/android/include/elf.h
+@@ -152,6 +152,10 @@ typedef struct {
+ #define NT_FPREGSET 2
+ #endif
+ 
++#if !defined(SHT_MIPS_DWARF)
++#define SHT_MIPS_DWARF 0x7000001e
++#endif
++
+ #ifdef __cplusplus
+ }  // extern "C"
+ #endif  // __cplusplus
+diff --git a/toolkit/crashreporter/google-breakpad/src/common/android/include/sgidefs.h b/toolkit/crashreporter/google-breakpad/src/common/android/include/sgidefs.h
+new file mode 100644
+index 0000000..cc8ef5d
+--- /dev/null
++++ b/toolkit/crashreporter/google-breakpad/src/common/android/include/sgidefs.h
+@@ -0,0 +1,51 @@
++// Copyright (c) 2013, Google Inc.
++// All rights reserved.
++//
++// Redistribution and use in source and binary forms, with or without
++// modification, are permitted provided that the following conditions are
++// met:
++//
++//     * Redistributions of source code must retain the above copyright
++// notice, this list of conditions and the following disclaimer.
++//     * Redistributions in binary form must reproduce the above
++// copyright notice, this list of conditions and the following disclaimer
++// in the documentation and/or other materials provided with the
++// distribution.
++//     * Neither the name of Google Inc. nor the names of its
++// contributors may be used to endorse or promote products derived from
++// this software without specific prior written permission.
++//
++// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++#ifndef GOOGLE_BREAKPAD_ANDROID_INCLUDE_SGIDEFS_H
++#define GOOGLE_BREAKPAD_ANDROID_INCLUDE_SGIDEFS_H
++
++#ifdef __mips__
++
++#define _MIPS_SIM_ABI32  1
++#define _MIPS_SIM_NABI32 2
++#define _MIPS_SIM_ABI64  3
++
++// The following should always be defined by the compiler,
++// Verified for Android with GCC 4.6 and Clang 3.1.
++#ifndef _MIPS_SIM
++#error "Toolchain should define _MIPS_SIM"
++#endif
++
++#ifndef _MIPS_SZPTR
++#error "Toolchain should define _MIPS_PTR"
++#endif
++
++#endif  // __mips__
++
++#endif  // GOOGLE_BREAKPAD_ANDROID_INCLUDE_SGIDEFS_H
+diff --git a/toolkit/crashreporter/google-breakpad/src/common/android/include/sys/user.h b/toolkit/crashreporter/google-breakpad/src/common/android/include/sys/user.h
+index d13e5f6..bc275bb 100644
+--- a/toolkit/crashreporter/google-breakpad/src/common/android/include/sys/user.h
++++ b/toolkit/crashreporter/google-breakpad/src/common/android/include/sys/user.h
+@@ -120,8 +120,23 @@ struct user {
+ 
+ #elif defined(__mips__)
+ 
+-// TODO: Provide some useful definitions here, once the rest of Breakpad
+-//        requires them.
++#define _ASM_USER_H 1  // Prevent <asm/user.h> conflicts
++
++struct user_regs_struct {
++  unsigned long long regs[32];
++  unsigned long long lo;
++  unsigned long long hi;
++  unsigned long long epc;
++  unsigned long long badvaddr;
++  unsigned long long status;
++  unsigned long long cause;
++};
++
++struct user_fpregs_struct {
++  unsigned long long regs[32];
++  unsigned int fpcsr;
++  unsigned int fir;
++};
+ 
+ #else
+ #  error "Unsupported Android CPU ABI"
+diff --git a/toolkit/crashreporter/google-breakpad/src/common/android/ucontext_constants.h b/toolkit/crashreporter/google-breakpad/src/common/android/ucontext_constants.h
+index 9c7a697..c99c51f 100644
+--- a/toolkit/crashreporter/google-breakpad/src/common/android/ucontext_constants.h
++++ b/toolkit/crashreporter/google-breakpad/src/common/android/ucontext_constants.h
+@@ -75,8 +75,11 @@
+ 
+ #elif defined(__mips__)
+ 
+-#define  MCONTEXT_GREGS_OFFSET     0
+-#define  UCONTEXT_SIGMASK_OFFSET   0
++#define  MCONTEXT_PC_OFFSET        32
++#define  MCONTEXT_GREGS_OFFSET     40
++#define  MCONTEXT_FPREGS_OFFSET    296
++#define  MCONTEXT_FPC_CSR          556
++#define  UCONTEXT_SIGMASK_OFFSET   616
+ 
+ #else
+ #error "This header has not been ported for your CPU"
+diff --git a/toolkit/crashreporter/google-breakpad/src/common/dwarf/dwarf2reader.cc b/toolkit/crashreporter/google-breakpad/src/common/dwarf/dwarf2reader.cc
+index 7d0b8af..d8fea47 100644
+--- a/toolkit/crashreporter/google-breakpad/src/common/dwarf/dwarf2reader.cc
++++ b/toolkit/crashreporter/google-breakpad/src/common/dwarf/dwarf2reader.cc
+@@ -1523,16 +1523,18 @@ bool CallFrameInfo::State::DoInstruction() {
+ 
+     // Change the base register used to compute the CFA.
+     case DW_CFA_def_cfa_register: {
++      if (!ParseOperands("r", &ops)) return false;
+       Rule *cfa_rule = rules_.CFARule();
+       if (!cfa_rule) {
+-        reporter_->NoCFARule(entry_->offset, entry_->kind, CursorOffset());
+-        return false;
+-      }
+-      if (!ParseOperands("r", &ops)) return false;
+-      cfa_rule->SetBaseRegister(ops.register_number);
+-      if (!cfa_rule->Handle(handler_, address_,
+-                            Handler::kCFARegister))
+-        return false;
++       if (!DoDefCFA(ops.register_number, ops.offset)) {
++          reporter_->NoCFARule(entry_->offset, entry_->kind, CursorOffset());
++          return false;
++        }
++      } else {
++        cfa_rule->SetBaseRegister(ops.register_number);
++        if (!cfa_rule->Handle(handler_, address_, Handler::kCFARegister))
++          return false;
++	}
+       break;
+     }
+ 
+diff --git a/toolkit/crashreporter/google-breakpad/src/common/dwarf_cfi_to_module.cc b/toolkit/crashreporter/google-breakpad/src/common/dwarf_cfi_to_module.cc
+index bd2348d..a36f9b0 100644
+--- a/toolkit/crashreporter/google-breakpad/src/common/dwarf_cfi_to_module.cc
++++ b/toolkit/crashreporter/google-breakpad/src/common/dwarf_cfi_to_module.cc
+@@ -111,6 +111,23 @@ vector<const UniqueString*> DwarfCFIToModule::RegisterNames::ARM() {
+   return MakeVector(names, sizeof(names) / sizeof(names[0]));
+ }
+ 
++vector<const UniqueString*> DwarfCFIToModule::RegisterNames::MIPS() {
++  static const char* const kRegisterNames[] = {
++    "$zero", "$at",  "$v0",  "$v1",  "$a0",   "$a1",  "$a2",  "$a3",
++    "$t0",   "$t1",  "$t2",  "$t3",  "$t4",   "$t5",  "$t6",  "$t7",
++    "$s0",   "$s1",  "$s2",  "$s3",  "$s4",   "$s5",  "$s6",  "$s7",
++    "$t8",   "$t9",  "$k0",  "$k1",  "$gp",   "$sp",  "$fp",  "$ra",
++    "$lo",   "$hi",  "$pc",  "$f0",  "$f2",   "$f3",  "$f4",  "$f5",
++    "$f6",   "$f7",  "$f8",  "$f9",  "$f10",  "$f11", "$f12", "$f13",
++    "$f14",  "$f15", "$f16", "$f17", "$f18",  "$f19", "$f20",
++    "$f21",  "$f22", "$f23", "$f24", "$f25",  "$f26", "$f27",
++    "$f28",  "$f29", "$f30", "$f31", "$fcsr", "$fir"
++  };
++
++  return MakeVector(kRegisterNames, 
++                    sizeof(kRegisterNames) / sizeof(kRegisterNames[0]));
++}
++
+ bool DwarfCFIToModule::Entry(size_t offset, uint64 address, uint64 length,
+                              uint8 version, const string &augmentation,
+                              unsigned return_address) {
+diff --git a/toolkit/crashreporter/google-breakpad/src/common/dwarf_cfi_to_module.h b/toolkit/crashreporter/google-breakpad/src/common/dwarf_cfi_to_module.h
+index fb837c5..2d1bb9f 100644
+--- a/toolkit/crashreporter/google-breakpad/src/common/dwarf_cfi_to_module.h
++++ b/toolkit/crashreporter/google-breakpad/src/common/dwarf_cfi_to_module.h
+@@ -112,6 +112,9 @@ class DwarfCFIToModule: public CallFrameInfo::Handler {
+     // ARM.
+     static vector<const UniqueString*> ARM();
+ 
++    //MIPS
++    static vector<const UniqueString*> MIPS();
++
+    private:
+     // Given STRINGS, an array of C strings with SIZE elements, return an
+     // equivalent vector<string>.
+diff --git a/toolkit/crashreporter/google-breakpad/src/common/linux/dump_symbols.cc b/toolkit/crashreporter/google-breakpad/src/common/linux/dump_symbols.cc
+index 9a54bab..ce7da85 100644
+--- a/toolkit/crashreporter/google-breakpad/src/common/linux/dump_symbols.cc
++++ b/toolkit/crashreporter/google-breakpad/src/common/linux/dump_symbols.cc
+@@ -291,6 +291,9 @@ bool DwarfCFIRegisterNames(const typename ElfClass::Ehdr* elf_header,
+     case EM_ARM:
+       *register_names = DwarfCFIToModule::RegisterNames::ARM();
+       return true;
++    case EM_MIPS:
++      *register_names = DwarfCFIToModule::RegisterNames::MIPS();
++      return true;
+     case EM_X86_64:
+       *register_names = DwarfCFIToModule::RegisterNames::X86_64();
+       return true;
+@@ -580,6 +583,7 @@ bool LoadSymbols(const string& obj_file,
+   typedef typename ElfClass::Addr Addr;
+   typedef typename ElfClass::Phdr Phdr;
+   typedef typename ElfClass::Shdr Shdr;
++  typedef typename ElfClass::Word Word;
+ 
+   BPLOG(INFO) << "";
+   BPLOG(INFO) << "LoadSymbols: BEGIN   " << obj_file;
+@@ -590,6 +594,8 @@ bool LoadSymbols(const string& obj_file,
+   module->SetLoadAddress(loading_addr);
+   info->set_loading_addr(loading_addr, obj_file);
+ 
++  Word debug_section_type = 
++      elf_header->e_machine == EM_MIPS ? SHT_MIPS_DWARF : SHT_PROGBITS;
+   const Shdr* sections =
+       GetOffset<ElfClass, Shdr>(elf_header, elf_header->e_shoff);
+   const Shdr* section_names = sections + elf_header->e_shstrndx;
+@@ -629,7 +635,7 @@ bool LoadSymbols(const string& obj_file,
+     if (dwarf_section) {
+       found_debug_info_section = true;
+       found_usable_info = true;
+-      info->LoadedSection(".debug_info");
++      info->LoadedSection("debug_section_type");
+       if (!LoadDwarf<ElfClass>(obj_file, elf_header, big_endian, module))
+         fprintf(stderr, "%s: \".debug_info\" section found, but failed to load "
+                 "DWARF debugging information\n", obj_file.c_str());
+@@ -640,7 +646,7 @@ bool LoadSymbols(const string& obj_file,
+     // Dwarf Call Frame Information (CFI) is actually independent from
+     // the other DWARF debugging information, and can be used alone.
+     const Shdr* dwarf_cfi_section =
+-        FindElfSectionByName<ElfClass>(".debug_frame", SHT_PROGBITS,
++        FindElfSectionByName<ElfClass>("debug_section_type", SHT_PROGBITS,
+                                        sections, names, names_end,
+                                        elf_header->e_shnum);
+     if (dwarf_cfi_section) {
+diff --git a/toolkit/crashreporter/google-breakpad/src/google_breakpad/common/minidump_cpu_mips.h b/toolkit/crashreporter/google-breakpad/src/google_breakpad/common/minidump_cpu_mips.h
+new file mode 100644
+index 0000000..4378aac
+--- /dev/null
++++ b/toolkit/crashreporter/google-breakpad/src/google_breakpad/common/minidump_cpu_mips.h
+@@ -0,0 +1,178 @@
++/* Copyright (c) 2013, Google Inc.
++ * All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are
++ * met:
++ *
++ *     * Redistributions of source code must retain the above copyright
++ * notice, this list of conditions and the following disclaimer.
++ *     * Redistributions in binary form must reproduce the above
++ * copyright notice, this list of conditions and the following disclaimer
++ * in the documentation and/or other materials provided with the
++ * distribution.
++ *     * Neither the name of Google Inc. nor the names of its
++ * contributors may be used to endorse or promote products derived from
++ * this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. */
++
++/* minidump_format.h: A cross-platform reimplementation of minidump-related
++ * portions of DbgHelp.h from the Windows Platform SDK.
++ *
++ * (This is C99 source, please don't corrupt it with C++.)
++ *
++ * This file contains the necessary definitions to read minidump files
++ * produced on MIPS.  These files may be read on any platform provided
++ * that the alignments of these structures on the processing system are
++ * identical to the alignments of these structures on the producing system.
++ * For this reason, precise-sized types are used.  The structures defined
++ * by this file have been laid out to minimize alignment problems by
++ * ensuring that all members are aligned on their natural boundaries.
++ * In some cases, tail-padding may be significant when different ABIs specify
++ * different tail-padding behaviors.  To avoid problems when reading or
++ * writing affected structures, MD_*_SIZE macros are provided where needed,
++ * containing the useful size of the structures without padding.
++ *
++ * Structures that are defined by Microsoft to contain a zero-length array
++ * are instead defined here to contain an array with one element, as
++ * zero-length arrays are forbidden by standard C and C++.  In these cases,
++ * *_minsize constants are provided to be used in place of sizeof.  For a
++ * cleaner interface to these sizes when using C++, see minidump_size.h.
++ *
++ * These structures are also sufficient to populate minidump files.
++ *
++ * Because precise data type sizes are crucial for this implementation to
++ * function properly and portably, a set of primitive types with known sizes
++ * are used as the basis of each structure defined by this file.
++ *
++ * Author: Chris Dearman
++ */
++
++/*
++ * MIPS support
++ */
++
++#ifndef GOOGLE_BREAKPAD_COMMON_MINIDUMP_CPU_MIPS_H__
++#define GOOGLE_BREAKPAD_COMMON_MINIDUMP_CPU_MIPS_H__
++
++#if defined(__mips__) && !defined(__ANDROID__)
++typedef struct {
++  uint64_t regs[32];
++  uint64_t lo;
++  uint64_t hi;
++  uint64_t epc;
++  uint64_t badvaddr;
++  uint64_t status;
++  uint64_t cause;
++} user_regs_struct;
++
++typedef struct {
++  uint64_t regs[32];
++  uint32_t fpcsr;
++  uint32_t fir;
++} user_fpregs_struct;
++#endif
++
++#define MD_CONTEXT_MIPS_GPR_COUNT 32
++#define MD_FLOATINGSAVEAREA_MIPS_FPR_COUNT 32
++#define MD_CONTEXT_MIPS_DSP_COUNT 3
++
++/*
++ * Note that these structures *do not* map directly to the CONTEXT
++ * structure defined in WinNT.h in the Windows Mobile SDK. That structure
++ * does not accomodate VFPv3, and I'm unsure if it was ever used in the
++ * wild anyway, as Windows CE only seems to produce "cedumps" which
++ * are not exactly minidumps.
++ */
++typedef struct {
++  /* 32 64-bit floating point registers, f0..f31 */
++  uint64_t regs[MD_FLOATINGSAVEAREA_MIPS_FPR_COUNT];
++
++  uint32_t fpcsr; /* FPU status register. */
++  uint32_t fir; /* FPU implementation register. */
++} MDFloatingSaveAreaMIPS;
++
++typedef struct {
++  /* The next field determines the layout of the structure, and which parts
++   * of it are populated.
++   */
++  uint32_t context_flags;
++  uint32_t _pad0;
++
++  /* 32 64-bit integer registers, r0..r31.
++   * Note the following fixed uses:
++   *   r30 is the stack pointer.
++   *   r31 is the return address (link register).
++   */
++  uint64_t iregs[MD_CONTEXT_MIPS_GPR_COUNT];
++
++  /* multiply/divide result. */
++  uint64_t mdhi, mdlo;
++
++  /* DSP accumulators. */
++  uint32_t hi[MD_CONTEXT_MIPS_DSP_COUNT];
++  uint32_t lo[MD_CONTEXT_MIPS_DSP_COUNT];
++  uint32_t dsp_control;
++  uint32_t _pad1;
++
++  uint64_t epc;
++  uint64_t badvaddr;
++  uint32_t status;
++  uint32_t cause;
++
++  /* The next field is included with MD_CONTEXT_MIPS_FLOATING_POINT. */
++  MDFloatingSaveAreaMIPS float_save;
++
++} MDRawContextMIPS;
++
++/* Indices into iregs for registers with a dedicated or conventional
++ * purpose.
++ */
++enum MDMIPSRegisterNumbers {
++  MD_CONTEXT_MIPS_REG_S0     = 16,
++  MD_CONTEXT_MIPS_REG_S1     = 17,
++  MD_CONTEXT_MIPS_REG_S2     = 18,
++  MD_CONTEXT_MIPS_REG_S3     = 19,
++  MD_CONTEXT_MIPS_REG_S4     = 20,
++  MD_CONTEXT_MIPS_REG_S5     = 21,
++  MD_CONTEXT_MIPS_REG_S6     = 22,
++  MD_CONTEXT_MIPS_REG_S7     = 23,
++  MD_CONTEXT_MIPS_REG_GP     = 28,
++  MD_CONTEXT_MIPS_REG_SP     = 29,
++  MD_CONTEXT_MIPS_REG_FP     = 30,
++  MD_CONTEXT_MIPS_REG_RA     = 31,
++};
++
++/* For (MDRawContextMIPS).context_flags.  These values indicate the type of
++ * context stored in the structure. */
++/* CONTEXT_MIPS from the Windows CE 5.0 SDK. This value isn't correct
++ * because this bit can be used for flags. Presumably this value was
++ * never actually used in minidumps, but only in "CEDumps" which
++ * are a whole parallel minidump file format for Windows CE.
++ * Therefore, Breakpad defines its own value for MIPS CPUs.
++ */
++#define MD_CONTEXT_MIPS  0x00040000
++#define MD_CONTEXT_MIPS_INTEGER           (MD_CONTEXT_MIPS | 0x00000002)
++#define MD_CONTEXT_MIPS_FLOATING_POINT    (MD_CONTEXT_MIPS | 0x00000004)
++#define MD_CONTEXT_MIPS_DSP               (MD_CONTEXT_MIPS | 0x00000008)
++
++#define MD_CONTEXT_MIPS_FULL              (MD_CONTEXT_MIPS_INTEGER | \
++                                           MD_CONTEXT_MIPS_FLOATING_POINT | \
++                                           MD_CONTEXT_MIPS_DSP)
++
++#define MD_CONTEXT_MIPS_ALL               (MD_CONTEXT_MIPS_INTEGER | \
++                                           MD_CONTEXT_MIPS_FLOATING_POINT \
++                                           MD_CONTEXT_MIPS_DSP)
++
++#endif  // GOOGLE_BREAKPAD_COMMON_MINIDUMP_CPU_MIPS_H__
+diff --git a/toolkit/crashreporter/google-breakpad/src/google_breakpad/common/minidump_format.h b/toolkit/crashreporter/google-breakpad/src/google_breakpad/common/minidump_format.h
+index af8cab0..01f9982 100644
+--- a/toolkit/crashreporter/google-breakpad/src/google_breakpad/common/minidump_format.h
++++ b/toolkit/crashreporter/google-breakpad/src/google_breakpad/common/minidump_format.h
+@@ -97,7 +97,6 @@ typedef struct {
+ #define MD_CONTEXT_IA64  0x00080000  /* CONTEXT_IA64 */
+ /* Additional values from winnt.h in the Windows CE 5.0 SDK: */
+ #define MD_CONTEXT_SHX   0x000000c0  /* CONTEXT_SH4 (Super-H, includes SH3) */
+-#define MD_CONTEXT_MIPS  0x00010000  /* CONTEXT_R4000 (same value as x86?) */
+ #define MD_CONTEXT_ALPHA 0x00020000  /* CONTEXT_ALPHA */
+ 
+ /* As of Windows 7 SP1, the number of flag bits has increased to
+@@ -115,6 +114,7 @@ typedef struct {
+ 
+ #include "minidump_cpu_amd64.h"
+ #include "minidump_cpu_arm.h"
++#include "minidump_cpu_mips.h"
+ #include "minidump_cpu_ppc.h"
+ #include "minidump_cpu_ppc64.h"
+ #include "minidump_cpu_sparc.h"
+diff --git a/toolkit/crashreporter/google-breakpad/src/google_breakpad/processor/minidump.h b/toolkit/crashreporter/google-breakpad/src/google_breakpad/processor/minidump.h
+index 1809771..e5db422 100644
+--- a/toolkit/crashreporter/google-breakpad/src/google_breakpad/processor/minidump.h
++++ b/toolkit/crashreporter/google-breakpad/src/google_breakpad/processor/minidump.h
+@@ -187,6 +187,7 @@ class MinidumpContext : public MinidumpStream {
+   // NULL.
+   const MDRawContextAMD64* GetContextAMD64() const;
+   const MDRawContextARM*   GetContextARM() const;
++  const MDRawContextMIPS*  GetContextMIPS() const;
+   const MDRawContextPPC*   GetContextPPC() const;
+   const MDRawContextSPARC* GetContextSPARC() const;
+   const MDRawContextX86*   GetContextX86() const;
+@@ -207,6 +208,7 @@ class MinidumpContext : public MinidumpStream {
+     // so variables can NOT be named as sparc
+     MDRawContextSPARC* ctx_sparc;
+     MDRawContextARM*   arm;
++    MDRawContextMIPS*  ctx_mips;
+   } context_;
+ 
+   // Store this separately because of the weirdo AMD64 context
+diff --git a/toolkit/crashreporter/google-breakpad/src/google_breakpad/processor/stack_frame_cpu.h b/toolkit/crashreporter/google-breakpad/src/google_breakpad/processor/stack_frame_cpu.h
+index a9cf99b..a294e97 100644
+--- a/toolkit/crashreporter/google-breakpad/src/google_breakpad/processor/stack_frame_cpu.h
++++ b/toolkit/crashreporter/google-breakpad/src/google_breakpad/processor/stack_frame_cpu.h
+@@ -244,6 +244,72 @@ struct StackFrameARM : public StackFrame {
+   int context_validity;
+ };
+ 
++struct StackFrameMIPS : public StackFrame {  
++  // MIPS callee save registers for o32 ABI (32bit registers) are: 
++  // 1. $s0-$s7, 
++  // 2. $sp, $fp
++  // 3. $f20-$f31 
++  // 
++  // The register structure is available at
++  // http://en.wikipedia.org/wiki/MIPS_architecture#Compiler_register_usage
++
++#define INDEX_MIPS_REG_S0 MD_CONTEXT_MIPS_REG_S0  // 16
++#define INDEX_MIPS_REG_S7 MD_CONTEXT_MIPS_REG_S7  // 23
++#define INDEX_MIPS_REG_GP MD_CONTEXT_MIPS_REG_GP  // 28
++#define INDEX_MIPS_REG_RA MD_CONTEXT_MIPS_REG_RA  // 31
++#define INDEX_MIPS_REG_PC 34 
++#define SHIFT_MIPS_REG_S0 0
++#define SHIFT_MIPS_REG_GP 8
++#define SHIFT_MIPS_REG_PC 12 
++
++  enum ContextValidity {
++    CONTEXT_VALID_NONE = 0,
++    CONTEXT_VALID_S0 = 1 << 0,  // $16
++    CONTEXT_VALID_S1 = 1 << 1,  // $17
++    CONTEXT_VALID_S2 = 1 << 2,  // $18
++    CONTEXT_VALID_S3 = 1 << 3,  // $19
++    CONTEXT_VALID_S4 = 1 << 4,  // $20
++    CONTEXT_VALID_S5 = 1 << 5,  // $21
++    CONTEXT_VALID_S6 = 1 << 6,  // $22
++    CONTEXT_VALID_S7 = 1 << 7,  // $23
++    // GP is not calee-save for o32 abi.
++    CONTEXT_VALID_GP = 1 << 8,  // $28
++    CONTEXT_VALID_SP = 1 << 9,  // $29
++    CONTEXT_VALID_FP = 1 << 10,  // $30
++    CONTEXT_VALID_RA = 1 << 11,  // $31  
++    CONTEXT_VALID_PC = 1 << 12,  // $34
++    CONTEXT_VALID_ALL = ~CONTEXT_VALID_NONE
++  };
++  
++  // Return the ContextValidity flag for register rN.
++  static ContextValidity RegisterValidFlag(int n) {
++    if (n >= INDEX_MIPS_REG_S0 && n <= INDEX_MIPS_REG_S7)
++      return ContextValidity(1 << (n - INDEX_MIPS_REG_S0 + SHIFT_MIPS_REG_S0));
++    else if (n >= INDEX_MIPS_REG_GP && n <= INDEX_MIPS_REG_RA)
++      return ContextValidity(1 << (n - INDEX_MIPS_REG_GP + SHIFT_MIPS_REG_GP));
++    else if (n == INDEX_MIPS_REG_PC)
++      return ContextValidity(1 << SHIFT_MIPS_REG_PC);
++
++    return CONTEXT_VALID_NONE;
++  }
++
++  StackFrameMIPS() : context(), context_validity(CONTEXT_VALID_NONE) {}
++
++  // Register state. This is only fully valid for the topmost frame in a
++  // stack. In other frames, which registers are present depends on what
++  // debugging information were available. Refer to 'context_validity' below.
++  MDRawContextMIPS context;   
++
++  // For each register in context whose value has been recovered,
++  // the corresponding CONTEXT_VALID_ bit in 'context_validity' is set.
++  //
++  // context_validity's type should actually be ContextValidity, but
++  // type int is used instead because the bitwise inclusive or operator
++  // yields an int when applied to enum values, and C++ doesn't
++  // silently convert from ints to enums.
++  int context_validity;
++};
++
+ }  // namespace google_breakpad
+ 
+ #endif  // GOOGLE_BREAKPAD_PROCESSOR_STACK_FRAME_CPU_H__
+diff --git a/toolkit/crashreporter/google-breakpad/src/processor/minidump.cc b/toolkit/crashreporter/google-breakpad/src/processor/minidump.cc
+index eb02783..72c9d13 100755
+--- a/toolkit/crashreporter/google-breakpad/src/processor/minidump.cc
++++ b/toolkit/crashreporter/google-breakpad/src/processor/minidump.cc
+@@ -705,6 +705,71 @@ bool MinidumpContext::Read(uint32_t expected_size) {
+         break;
+       }
+ 
++      case MD_CONTEXT_MIPS: {
++        if (expected_size != sizeof(MDRawContextMIPS)) {
++          BPLOG(ERROR) << "MinidumpContext MIPS size mismatch, " 
++                       << expected_size 
++                       << " != " 
++                       << sizeof(MDRawContextMIPS);
++          return false;
++        }
++
++        scoped_ptr<MDRawContextMIPS> context_mips(new MDRawContextMIPS());
++
++        // Set the context_flags member, which has already been read, and
++        // read the rest of the structure beginning with the first member
++        // after context_flags.
++        context_mips->context_flags = context_flags;
++
++        size_t flags_size = sizeof(context_mips->context_flags);
++        uint8_t* context_after_flags =
++            reinterpret_cast<uint8_t*>(context_mips.get()) + flags_size;
++        if (!minidump_->ReadBytes(context_after_flags,
++                                  sizeof(MDRawContextMIPS) - flags_size)) {
++          BPLOG(ERROR) << "MinidumpContext could not read MIPS context";
++          return false;
++        }
++
++        // Do this after reading the entire MDRawContext structure because
++        // GetSystemInfo may seek minidump to a new position.
++        if (!CheckAgainstSystemInfo(cpu_type)) {
++          BPLOG(ERROR) << "MinidumpContext MIPS does not match system info";
++          return false;
++        }
++
++        if (minidump_->swap()) {
++          // context_mips->context_flags was already swapped.
++          for (int ireg_index = 0;
++               ireg_index < MD_CONTEXT_MIPS_GPR_COUNT;
++               ++ireg_index) {
++            Swap(&context_mips->iregs[ireg_index]);
++          }
++	  Swap(&context_mips->mdhi);
++	  Swap(&context_mips->mdlo);
++          for (int dsp_index = 0;
++               dsp_index < MD_CONTEXT_MIPS_DSP_COUNT;
++               ++dsp_index) {
++            Swap(&context_mips->hi[dsp_index]);
++            Swap(&context_mips->lo[dsp_index]);
++          }
++	  Swap(&context_mips->dsp_control);
++          Swap(&context_mips->epc);
++          Swap(&context_mips->badvaddr);
++          Swap(&context_mips->status);
++          Swap(&context_mips->cause);
++          for (int fpr_index = 0;
++               fpr_index < MD_FLOATINGSAVEAREA_MIPS_FPR_COUNT;
++               ++fpr_index) {
++            Swap(&context_mips->float_save.regs[fpr_index]);
++          }
++          Swap(&context_mips->float_save.fpcsr);
++          Swap(&context_mips->float_save.fir);
++        }
++        context_.ctx_mips = context_mips.release();
++
++        break;
++      }
++
+       default: {
+         // Unknown context type - Don't log as an error yet. Let the
+         // caller work that out.
+@@ -759,6 +824,9 @@ bool MinidumpContext::GetInstructionPointer(uint64_t* ip) const {
+   case MD_CONTEXT_X86:
+     *ip = context_.x86->eip;
+     break;
++  case MD_CONTEXT_MIPS:
++    *ip = context_.ctx_mips->epc;
++    break;
+   default:
+     // This should never happen.
+     BPLOG(ERROR) << "Unknown CPU architecture in GetInstructionPointer";
+@@ -814,6 +882,15 @@ const MDRawContextARM* MinidumpContext::GetContextARM() const {
+   return context_.arm;
+ }
+ 
++const MDRawContextMIPS* MinidumpContext::GetContextMIPS() const {
++  if (GetContextCPU() != MD_CONTEXT_MIPS) {
++    BPLOG(ERROR) << "MinidumpContext cannot get MIPS context";
++    return NULL;
++  }
++
++  return context_.ctx_mips;
++}
++
+ void MinidumpContext::FreeContext() {
+   switch (GetContextCPU()) {
+     case MD_CONTEXT_X86:
+@@ -836,6 +913,10 @@ void MinidumpContext::FreeContext() {
+       delete context_.arm;
+       break;
+ 
++    case MD_CONTEXT_MIPS:
++      delete context_.ctx_mips;
++      break;
++
+     default:
+       // There is no context record (valid_ is false) or there's a
+       // context record for an unknown CPU (shouldn't happen, only known
+@@ -900,6 +981,11 @@ bool MinidumpContext::CheckAgainstSystemInfo(uint32_t context_cpu_type) {
+       if (system_info_cpu_type == MD_CPU_ARCHITECTURE_ARM)
+         return_value = true;
+       break;
++
++    case MD_CONTEXT_MIPS:
++      if (system_info_cpu_type == MD_CPU_ARCHITECTURE_MIPS)
++        return_value = true;
++      break;
+   }
+ 
+   BPLOG_IF(ERROR, !return_value) << "MinidumpContext CPU " <<
+@@ -1135,6 +1221,53 @@ void MinidumpContext::Print() {
+       break;
+     }
+ 
++    case MD_CONTEXT_MIPS: {
++      const MDRawContextMIPS* context_mips = GetContextMIPS();
++      printf("MDRawContextMIPS\n");
++      printf("  context_flags        = 0x%x\n",
++             context_mips->context_flags);
++      for (int ireg_index = 0;
++           ireg_index < MD_CONTEXT_MIPS_GPR_COUNT;
++           ++ireg_index) {
++        printf("  iregs[%2d]           = 0x%" PRIx64 "\n",
++               ireg_index, context_mips->iregs[ireg_index]);
++      }
++      printf("  mdhi                 = 0x%" PRIx64 "\n",
++             context_mips->mdhi);
++      printf("  mdlo                 = 0x%" PRIx64 "\n",
++             context_mips->mdhi);
++      for (int dsp_index = 0;
++           dsp_index < MD_CONTEXT_MIPS_DSP_COUNT;
++           ++dsp_index) {
++        printf("  hi[%1d]              = 0x%" PRIx32 "\n",
++               dsp_index, context_mips->hi[dsp_index]);
++        printf("  lo[%1d]              = 0x%" PRIx32 "\n",
++               dsp_index, context_mips->lo[dsp_index]);
++      }
++      printf("  dsp_control          = 0x%" PRIx32 "\n",
++             context_mips->dsp_control);
++      printf("  epc                  = 0x%" PRIx64 "\n",
++             context_mips->epc);
++      printf("  badvaddr             = 0x%" PRIx64 "\n",
++             context_mips->badvaddr);
++      printf("  status               = 0x%" PRIx32 "\n",
++             context_mips->status);
++      printf("  cause                = 0x%" PRIx32 "\n",
++             context_mips->cause);
++
++      for (int fpr_index = 0;
++           fpr_index < MD_FLOATINGSAVEAREA_MIPS_FPR_COUNT;
++           ++fpr_index) {
++        printf("  float_save.regs[%2d] = 0x%" PRIx64 "\n",
++               fpr_index, context_mips->float_save.regs[fpr_index]);
++      }
++      printf("  float_save.fpcsr     = 0x%" PRIx32 "\n",
++             context_mips->float_save.fpcsr);
++      printf("  float_save.fir       = 0x%" PRIx32 "\n",
++             context_mips->float_save.fir);
++      break;
++    }
++
+     default: {
+       break;
+     }
+diff --git a/toolkit/crashreporter/google-breakpad/src/processor/minidump_processor.cc b/toolkit/crashreporter/google-breakpad/src/processor/minidump_processor.cc
+index 0868278..64bec4b 100644
+--- a/toolkit/crashreporter/google-breakpad/src/processor/minidump_processor.cc
++++ b/toolkit/crashreporter/google-breakpad/src/processor/minidump_processor.cc
+@@ -357,6 +357,11 @@ bool MinidumpProcessor::GetCPUInfo(Minidump *dump, SystemInfo *info) {
+       break;
+     }
+ 
++    case MD_CPU_ARCHITECTURE_MIPS: {
++      info->cpu = "mips";
++      break;
++    }
++
+     default: {
+       // Assign the numeric architecture ID into the CPU string.
+       char cpu_string[7];
+diff --git a/toolkit/crashreporter/google-breakpad/src/processor/minidump_stackwalk.cc b/toolkit/crashreporter/google-breakpad/src/processor/minidump_stackwalk.cc
+index 6bf78ac..478d153 100644
+--- a/toolkit/crashreporter/google-breakpad/src/processor/minidump_stackwalk.cc
++++ b/toolkit/crashreporter/google-breakpad/src/processor/minidump_stackwalk.cc
+@@ -72,6 +72,7 @@ using google_breakpad::StackFrameSPARC;
+ using google_breakpad::StackFrameX86;
+ using google_breakpad::StackFrameAMD64;
+ using google_breakpad::StackFrameARM;
++using google_breakpad::StackFrameMIPS;
+ 
+ // Separator character for machine readable output.
+ static const char kOutputSeparator = '|';
+@@ -269,7 +270,63 @@ static void PrintStack(const CallStack *stack, const string &cpu) {
+         sequence = PrintRegister("lr", frame_arm->context.iregs[14], sequence);
+       if (frame_arm->context_validity & StackFrameARM::CONTEXT_VALID_PC)
+         sequence = PrintRegister("pc", frame_arm->context.iregs[15], sequence);
+-    }
++    } else if (cpu == "mips") {
++      const StackFrameMIPS* frame_mips =
++        reinterpret_cast<const StackFrameMIPS*>(frame);
++
++      if (frame_mips->context_validity & StackFrameMIPS::CONTEXT_VALID_GP)
++        sequence = PrintRegister64("gp",
++                     frame_mips->context.iregs[MD_CONTEXT_MIPS_REG_GP],
++                     sequence);
++      if (frame_mips->context_validity & StackFrameMIPS::CONTEXT_VALID_SP)
++        sequence = PrintRegister64("sp",
++                     frame_mips->context.iregs[MD_CONTEXT_MIPS_REG_SP],
++                     sequence);
++      if (frame_mips->context_validity & StackFrameMIPS::CONTEXT_VALID_FP)
++        sequence = PrintRegister64("fp",
++                     frame_mips->context.iregs[MD_CONTEXT_MIPS_REG_FP],
++                     sequence);
++      if (frame_mips->context_validity & StackFrameMIPS::CONTEXT_VALID_RA)
++        sequence = PrintRegister64("ra",
++                     frame_mips->context.iregs[MD_CONTEXT_MIPS_REG_RA],
++                     sequence);
++      if (frame_mips->context_validity & StackFrameMIPS::CONTEXT_VALID_PC)
++        sequence = PrintRegister64("pc", frame_mips->context.epc, sequence);
++
++      // Save registers s0-s7
++      if (frame_mips->context_validity & StackFrameMIPS::CONTEXT_VALID_S0)
++        sequence = PrintRegister64("s0",
++                     frame_mips->context.iregs[MD_CONTEXT_MIPS_REG_S0],
++                     sequence);
++      if (frame_mips->context_validity & StackFrameMIPS::CONTEXT_VALID_S1)
++        sequence = PrintRegister64("s1",
++                     frame_mips->context.iregs[MD_CONTEXT_MIPS_REG_S1],
++                     sequence);
++      if (frame_mips->context_validity & StackFrameMIPS::CONTEXT_VALID_S2)
++        sequence = PrintRegister64("s2",
++                     frame_mips->context.iregs[MD_CONTEXT_MIPS_REG_S2],
++                     sequence);
++      if (frame_mips->context_validity & StackFrameMIPS::CONTEXT_VALID_S3)
++        sequence = PrintRegister64("s3",
++                     frame_mips->context.iregs[MD_CONTEXT_MIPS_REG_S3],
++                     sequence);
++      if (frame_mips->context_validity & StackFrameMIPS::CONTEXT_VALID_S4)
++        sequence = PrintRegister64("s4",
++                     frame_mips->context.iregs[MD_CONTEXT_MIPS_REG_S4],
++                     sequence);
++      if (frame_mips->context_validity & StackFrameMIPS::CONTEXT_VALID_S5)
++        sequence = PrintRegister64("s5",
++                     frame_mips->context.iregs[MD_CONTEXT_MIPS_REG_S5],
++                     sequence);
++      if (frame_mips->context_validity & StackFrameMIPS::CONTEXT_VALID_S6)
++        sequence = PrintRegister64("s6",
++                     frame_mips->context.iregs[MD_CONTEXT_MIPS_REG_S6],
++                     sequence);
++      if (frame_mips->context_validity & StackFrameMIPS::CONTEXT_VALID_S7)
++        sequence = PrintRegister64("s7",
++                     frame_mips->context.iregs[MD_CONTEXT_MIPS_REG_S7],
++                     sequence);
++    } 
+     printf("\n    Found by: %s\n", frame->trust_description().c_str());
+   }
+ }
+diff --git a/toolkit/crashreporter/google-breakpad/src/processor/minidump_unittest.cc b/toolkit/crashreporter/google-breakpad/src/processor/minidump_unittest.cc
+index d16bbc6..bb7dac6 100644
+--- a/toolkit/crashreporter/google-breakpad/src/processor/minidump_unittest.cc
++++ b/toolkit/crashreporter/google-breakpad/src/processor/minidump_unittest.cc
+@@ -1150,4 +1150,117 @@ TEST(Dump, OneExceptionARMOldFlags) {
+   EXPECT_EQ(0x2e951ef7U, raw_context.cpsr);
+ }
+ 
++TEST(Dump, OneExceptionMIPS) {
++  Dump dump(0, kLittleEndian);
++
++  MDRawContextMIPS raw_context;
++  raw_context.context_flags = MD_CONTEXT_MIPS_INTEGER;
++  raw_context.iregs[0] = 0x3ecba80d;
++  raw_context.iregs[1] = 0x382583b9;
++  raw_context.iregs[2] = 0x7fccc03f;
++  raw_context.iregs[3] = 0xf62f8ec2;
++  raw_context.iregs[4] = 0x46a6a6a8;
++  raw_context.iregs[5] = 0x6a5025e2;
++  raw_context.iregs[6] = 0xd9fabb4a;
++  raw_context.iregs[7] = 0x6913f540;
++  raw_context.iregs[8] = 0xbffe6eda;
++  raw_context.iregs[9] = 0xb2ce1e2d;
++  raw_context.iregs[10] = 0x659caaa4;
++  raw_context.iregs[11] = 0xf0e0d0c0;
++  raw_context.iregs[12] = 0xa9b8c7d6;
++  raw_context.iregs[13] = 0x12345678;
++  raw_context.iregs[14] = 0xabcd1234;
++  raw_context.iregs[15] = 0x10203040;
++  raw_context.iregs[16] = 0xa80d3ecb;
++  raw_context.iregs[17] = 0x83b93825;
++  raw_context.iregs[18] = 0xc03f7fcc;
++  raw_context.iregs[19] = 0x8ec2f62f;
++  raw_context.iregs[20] = 0xa6a846a6;
++  raw_context.iregs[21] = 0x25e26a50;
++  raw_context.iregs[22] = 0xbb4ad9fa;
++  raw_context.iregs[23] = 0xf5406913;
++  raw_context.iregs[24] = 0x6edabffe;
++  raw_context.iregs[25] = 0x1e2db2ce;
++  raw_context.iregs[26] = 0xaaa4659c;
++  raw_context.iregs[27] = 0xd0c0f0e0;
++  raw_context.iregs[28] = 0xc7d6a9b8;
++  raw_context.iregs[29] = 0x56781234;
++  raw_context.iregs[30] = 0x1234abcd;
++  raw_context.iregs[31] = 0x30401020;
++
++  Context context(dump, raw_context);
++
++  Exception exception(dump, context,
++                      0x1234abcd,  // Thread id.
++                      0xdcba4321,  // Exception code.
++                      0xf0e0d0c0,  // Exception flags.
++                      0x0919a9b9); // Exception address.
++  
++  dump.Add(&context);
++  dump.Add(&exception);
++  dump.Finish();
++
++  string contents;
++  ASSERT_TRUE(dump.GetContents(&contents));
++
++  istringstream minidump_stream(contents);
++  Minidump minidump(minidump_stream);
++  ASSERT_TRUE(minidump.Read());
++  ASSERT_EQ(1U, minidump.GetDirectoryEntryCount());
++
++  MinidumpException *md_exception = minidump.GetException();
++  ASSERT_TRUE(md_exception != NULL);
++
++  uint32_t thread_id;
++  ASSERT_TRUE(md_exception->GetThreadID(&thread_id));
++  ASSERT_EQ(0x1234abcdU, thread_id);
++
++  const MDRawExceptionStream* raw_exception = md_exception->exception();
++  ASSERT_TRUE(raw_exception != NULL);
++  EXPECT_EQ(0xdcba4321, raw_exception->exception_record.exception_code);
++  EXPECT_EQ(0xf0e0d0c0, raw_exception->exception_record.exception_flags);
++  EXPECT_EQ(0x0919a9b9U,
++            raw_exception->exception_record.exception_address);
++
++  MinidumpContext* md_context = md_exception->GetContext();
++  ASSERT_TRUE(md_context != NULL);
++  ASSERT_EQ((uint32_t) MD_CONTEXT_MIPS, md_context->GetContextCPU());
++  const MDRawContextMIPS* md_raw_context = md_context->GetContextMIPS();
++  ASSERT_TRUE(md_raw_context != NULL);
++  ASSERT_EQ((uint32_t) MD_CONTEXT_MIPS_INTEGER,
++            (md_raw_context->context_flags & MD_CONTEXT_MIPS_INTEGER));
++  EXPECT_EQ(0x3ecba80dU, raw_context.iregs[0]);
++  EXPECT_EQ(0x382583b9U, raw_context.iregs[1]);
++  EXPECT_EQ(0x7fccc03fU, raw_context.iregs[2]);
++  EXPECT_EQ(0xf62f8ec2U, raw_context.iregs[3]);
++  EXPECT_EQ(0x46a6a6a8U, raw_context.iregs[4]);
++  EXPECT_EQ(0x6a5025e2U, raw_context.iregs[5]);
++  EXPECT_EQ(0xd9fabb4aU, raw_context.iregs[6]);
++  EXPECT_EQ(0x6913f540U, raw_context.iregs[7]);
++  EXPECT_EQ(0xbffe6edaU, raw_context.iregs[8]);
++  EXPECT_EQ(0xb2ce1e2dU, raw_context.iregs[9]);
++  EXPECT_EQ(0x659caaa4U, raw_context.iregs[10]);
++  EXPECT_EQ(0xf0e0d0c0U, raw_context.iregs[11]);
++  EXPECT_EQ(0xa9b8c7d6U, raw_context.iregs[12]);
++  EXPECT_EQ(0x12345678U, raw_context.iregs[13]);
++  EXPECT_EQ(0xabcd1234U, raw_context.iregs[14]);
++  EXPECT_EQ(0x10203040U, raw_context.iregs[15]);
++  EXPECT_EQ(0xa80d3ecbU, raw_context.iregs[16]);
++  EXPECT_EQ(0x83b93825U, raw_context.iregs[17]);
++  EXPECT_EQ(0xc03f7fccU, raw_context.iregs[18]);
++  EXPECT_EQ(0x8ec2f62fU, raw_context.iregs[19]);
++  EXPECT_EQ(0xa6a846a6U, raw_context.iregs[20]);
++  EXPECT_EQ(0x25e26a50U, raw_context.iregs[21]);
++  EXPECT_EQ(0xbb4ad9faU, raw_context.iregs[22]);
++  EXPECT_EQ(0xf5406913U, raw_context.iregs[23]);
++  EXPECT_EQ(0x6edabffeU, raw_context.iregs[24]);
++  EXPECT_EQ(0x1e2db2ceU, raw_context.iregs[25]);
++  EXPECT_EQ(0xaaa4659cU, raw_context.iregs[26]);
++  EXPECT_EQ(0xd0c0f0e0U, raw_context.iregs[27]);
++  EXPECT_EQ(0xc7d6a9b8U, raw_context.iregs[28]);
++  EXPECT_EQ(0x56781234U, raw_context.iregs[29]);
++  EXPECT_EQ(0x1234abcdU, raw_context.iregs[30]);
++  EXPECT_EQ(0x30401020U, raw_context.iregs[31]);
++}
++
+ }  // namespace
+diff --git a/toolkit/crashreporter/google-breakpad/src/processor/moz.build b/toolkit/crashreporter/google-breakpad/src/processor/moz.build
+index a31fbc9..af86b1a 100644
+--- a/toolkit/crashreporter/google-breakpad/src/processor/moz.build
++++ b/toolkit/crashreporter/google-breakpad/src/processor/moz.build
+@@ -15,6 +15,7 @@ UNIFIED_SOURCES += [
+     'stackwalker.cc',
+     'stackwalker_amd64.cc',
+     'stackwalker_arm.cc',
++    'stackwalker_mips.cc',
+     'stackwalker_ppc.cc',
+     'stackwalker_sparc.cc',
+     'stackwalker_x86.cc',
+diff --git a/toolkit/crashreporter/google-breakpad/src/processor/stackwalker.cc b/toolkit/crashreporter/google-breakpad/src/processor/stackwalker.cc
+index 2893123..621e647 100644
+--- a/toolkit/crashreporter/google-breakpad/src/processor/stackwalker.cc
++++ b/toolkit/crashreporter/google-breakpad/src/processor/stackwalker.cc
+@@ -52,6 +52,7 @@
+ #include "processor/stackwalker_x86.h"
+ #include "processor/stackwalker_amd64.h"
+ #include "processor/stackwalker_arm.h"
++#include "processor/stackwalker_mips.h"
+ 
+ namespace google_breakpad {
+ 
+@@ -199,6 +200,12 @@ Stackwalker* Stackwalker::StackwalkerForCPU(
+                                              context->GetContextSPARC(),
+                                              memory, modules, frame_symbolizer);
+       break;
++ 
++    case MD_CONTEXT_MIPS:
++      cpu_stackwalker = new StackwalkerMIPS(system_info,
++                                            context->GetContextMIPS(),
++                                            memory, modules, frame_symbolizer);
++      break;
+ 
+     case MD_CONTEXT_ARM:
+       int fp_register = -1;
+diff --git a/toolkit/crashreporter/google-breakpad/src/processor/stackwalker_address_list.cc b/toolkit/crashreporter/google-breakpad/src/processor/stackwalker_address_list.cc
+new file mode 100644
+index 0000000..e81fec2
+--- /dev/null
++++ b/toolkit/crashreporter/google-breakpad/src/processor/stackwalker_address_list.cc
+@@ -0,0 +1,92 @@
++// Copyright (c) 2013 Google Inc.
++// All rights reserved.
++//
++// Redistribution and use in source and binary forms, with or without
++// modification, are permitted provided that the following conditions are
++// met:
++//
++//     * Redistributions of source code must retain the above copyright
++// notice, this list of conditions and the following disclaimer.
++//     * Redistributions in binary form must reproduce the above
++// copyright notice, this list of conditions and the following disclaimer
++// in the documentation and/or other materials provided with the
++// distribution.
++//     * Neither the name of Google Inc. nor the names of its
++// contributors may be used to endorse or promote products derived from
++// this software without specific prior written permission.
++//
++// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++// stackwalker_address_list.cc: a pseudo stack walker.
++//
++// See stackwalker_address_list.h for documentation.
++//
++// Author: Chris Hamilton <chrisha@chromium.org>
++
++#include <assert.h>
++
++#include <vector>
++
++#include "google_breakpad/processor/call_stack.h"
++#include "google_breakpad/processor/memory_region.h"
++#include "google_breakpad/processor/source_line_resolver_interface.h"
++#include "google_breakpad/processor/stack_frame.h"
++#include "processor/logging.h"
++#include "processor/stackwalker_address_list.h"
++
++namespace google_breakpad {
++
++StackwalkerAddressList::StackwalkerAddressList(
++    const uint64_t* frames,
++    size_t frame_count,
++    const CodeModules* modules,
++    StackFrameSymbolizer* frame_symbolizer)
++    : Stackwalker(NULL, NULL, modules, frame_symbolizer),
++      frames_(frames),
++      frame_count_(frame_count) {
++  assert(frames);
++  assert(frame_symbolizer);
++}
++
++StackFrame* StackwalkerAddressList::GetContextFrame() {
++  if (frame_count_ == 0)
++    return NULL;
++
++  StackFrame* frame = new StackFrame();
++  frame->instruction = frames_[0];
++  frame->trust = StackFrame::FRAME_TRUST_PREWALKED;
++  return frame;
++}
++
++StackFrame* StackwalkerAddressList::GetCallerFrame(const CallStack* stack,
++                                                   bool stack_scan_allowed) {
++  if (!stack) {
++    BPLOG(ERROR) << "Can't get caller frame without stack";
++    return NULL;
++  }
++
++  size_t frame_index = stack->frames()->size();
++
++  // There are no more frames to fetch.
++  if (frame_index >= frame_count_)
++    return NULL;
++
++  // All frames have the highest level of trust because they were
++  // explicitly provided.
++  StackFrame* frame = new StackFrame();
++  frame->instruction = frames_[frame_index];
++  frame->trust = StackFrame::FRAME_TRUST_PREWALKED;
++  return frame;
++}
++
++}  // namespace google_breakpad
+diff --git a/toolkit/crashreporter/google-breakpad/src/processor/stackwalker_address_list.h b/toolkit/crashreporter/google-breakpad/src/processor/stackwalker_address_list.h
+new file mode 100644
+index 0000000..0f8c989
+--- /dev/null
++++ b/toolkit/crashreporter/google-breakpad/src/processor/stackwalker_address_list.h
+@@ -0,0 +1,72 @@
++// Copyright (c) 2013 Google Inc.
++// All rights reserved.
++//
++// Redistribution and use in source and binary forms, with or without
++// modification, are permitted provided that the following conditions are
++// met:
++//
++//     * Redistributions of source code must retain the above copyright
++// notice, this list of conditions and the following disclaimer.
++//     * Redistributions in binary form must reproduce the above
++// copyright notice, this list of conditions and the following disclaimer
++// in the documentation and/or other materials provided with the
++// distribution.
++//     * Neither the name of Google Inc. nor the names of its
++// contributors may be used to endorse or promote products derived from
++// this software without specific prior written permission.
++//
++// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++// stackwalker_address_list.h: a pseudo stackwalker.
++//
++// Doesn't actually walk a stack, rather initializes a CallStack given an
++// explicit list of already walked return addresses.
++//
++// Author: Chris Hamilton <chrisha@chromium.org>
++
++#ifndef PROCESSOR_STACKWALKER_ADDRESS_LIST_H_
++#define PROCESSOR_STACKWALKER_ADDRESS_LIST_H_
++
++#include "common/basictypes.h"
++#include "google_breakpad/common/breakpad_types.h"
++#include "google_breakpad/processor/stackwalker.h"
++
++namespace google_breakpad {
++
++class CodeModules;
++
++class StackwalkerAddressList : public Stackwalker {
++ public:
++  // Initializes this stack walker with an explicit set of frame addresses.
++  // |modules| and |frame_symbolizer| are passed directly through to the base
++  // Stackwalker constructor.
++  StackwalkerAddressList(const uint64_t* frames,
++                         size_t frame_count,
++                         const CodeModules* modules,
++                         StackFrameSymbolizer* frame_symbolizer);
++
++ private:
++  // Implementation of Stackwalker.
++  virtual StackFrame* GetContextFrame();
++  virtual StackFrame* GetCallerFrame(const CallStack* stack,
++                                     bool stack_scan_allowed);
++
++  const uint64_t* frames_;
++  size_t frame_count_;
++
++  DISALLOW_COPY_AND_ASSIGN(StackwalkerAddressList);
++};
++
++}  // namespace google_breakpad
++
++#endif  // PROCESSOR_STACKWALKER_ADDRESS_LIST_H_
+diff --git a/toolkit/crashreporter/google-breakpad/src/processor/stackwalker_address_list_unittest.cc b/toolkit/crashreporter/google-breakpad/src/processor/stackwalker_address_list_unittest.cc
+new file mode 100644
+index 0000000..ab4e9c0
+--- /dev/null
++++ b/toolkit/crashreporter/google-breakpad/src/processor/stackwalker_address_list_unittest.cc
+@@ -0,0 +1,197 @@
++// Copyright (c) 2013, Google Inc.
++// All rights reserved.
++//
++// Redistribution and use in source and binary forms, with or without
++// modification, are permitted provided that the following conditions are
++// met:
++//
++//     * Redistributions of source code must retain the above copyright
++// notice, this list of conditions and the following disclaimer.
++//     * Redistributions in binary form must reproduce the above
++// copyright notice, this list of conditions and the following disclaimer
++// in the documentation and/or other materials provided with the
++// distribution.
++//     * Neither the name of Google Inc. nor the names of its
++// contributors may be used to endorse or promote products derived from
++// this software without specific prior written permission.
++//
++// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++// stackwalker_address_list_unittest.cc: Unit tests for the
++// StackwalkerAddressList class.
++//
++// Author: Chris Hamilton <chrisha@chromium.org>
++
++#include <string>
++#include <vector>
++
++#include "breakpad_googletest_includes.h"
++#include "common/using_std_string.h"
++#include "google_breakpad/common/minidump_format.h"
++#include "google_breakpad/processor/basic_source_line_resolver.h"
++#include "google_breakpad/processor/call_stack.h"
++#include "google_breakpad/processor/code_module.h"
++#include "google_breakpad/processor/source_line_resolver_interface.h"
++#include "google_breakpad/processor/stack_frame.h"
++#include "processor/stackwalker_unittest_utils.h"
++#include "processor/stackwalker_address_list.h"
++
++using google_breakpad::BasicSourceLineResolver;
++using google_breakpad::CallStack;
++using google_breakpad::CodeModule;
++using google_breakpad::StackFrameSymbolizer;
++using google_breakpad::StackFrame;
++using google_breakpad::Stackwalker;
++using google_breakpad::StackwalkerAddressList;
++using std::vector;
++using testing::_;
++using testing::AnyNumber;
++using testing::Return;
++using testing::SetArgumentPointee;
++
++#define arraysize(f) (sizeof(f) / sizeof(*f))
++
++// Addresses and sizes of a couple dummy modules.
++uint64_t kModule1Base = 0x40000000;
++uint64_t kModule1Size = 0x10000;
++uint64_t kModule2Base = 0x50000000;
++uint64_t kModule2Size = 0x10000;
++
++// A handful of addresses that lie within the modules above.
++const uint64_t kDummyFrames[] = {
++    0x50003000, 0x50002000, 0x50001000, 0x40002000, 0x40001000 };
++
++class StackwalkerAddressListTest : public testing::Test {
++ public:
++  StackwalkerAddressListTest()
++    : // Give the two modules reasonable standard locations and names
++      // for tests to play with.
++      module1(kModule1Base, kModule1Size, "module1", "version1"),
++      module2(kModule2Base, kModule2Size, "module2", "version2") {
++    // Create some modules with some stock debugging information.
++    modules.Add(&module1);
++    modules.Add(&module2);
++
++    // By default, none of the modules have symbol info; call
++    // SetModuleSymbols to override this.
++    EXPECT_CALL(supplier, GetCStringSymbolData(_, _, _, _, _))
++      .WillRepeatedly(Return(MockSymbolSupplier::NOT_FOUND));
++
++    // Avoid GMOCK WARNING "Uninteresting mock function call - returning
++    // directly" for FreeSymbolData().
++    EXPECT_CALL(supplier, FreeSymbolData(_)).Times(AnyNumber());
++  }
++
++  // Set the Breakpad symbol information that supplier should return for
++  // MODULE to INFO.
++  void SetModuleSymbols(MockCodeModule *module, const string &info) {
++    size_t buffer_size;
++    char *buffer = supplier.CopySymbolDataAndOwnTheCopy(info, &buffer_size);
++    EXPECT_CALL(supplier, GetCStringSymbolData(module, NULL, _, _, _))
++      .WillRepeatedly(DoAll(SetArgumentPointee<3>(buffer),
++                            SetArgumentPointee<4>(buffer_size),
++                            Return(MockSymbolSupplier::FOUND)));
++  }
++
++  void CheckCallStack(const CallStack& call_stack) {
++    const std::vector<StackFrame*>* frames = call_stack.frames();
++    ASSERT_EQ(arraysize(kDummyFrames), frames->size());
++    for (size_t i = 0; i < arraysize(kDummyFrames); ++i) {
++      ASSERT_EQ(kDummyFrames[i], frames->at(i)->instruction);
++      ASSERT_EQ(StackFrame::FRAME_TRUST_PREWALKED, frames->at(i)->trust);
++    }
++    ASSERT_EQ(static_cast<const CodeModule*>(&module2), frames->at(0)->module);
++    ASSERT_EQ(static_cast<const CodeModule*>(&module2), frames->at(1)->module);
++    ASSERT_EQ(static_cast<const CodeModule*>(&module2), frames->at(2)->module);
++    ASSERT_EQ(static_cast<const CodeModule*>(&module1), frames->at(3)->module);
++    ASSERT_EQ(static_cast<const CodeModule*>(&module1), frames->at(4)->module);
++  }
++
++  MockCodeModule module1;
++  MockCodeModule module2;
++  MockCodeModules modules;
++  MockSymbolSupplier supplier;
++  BasicSourceLineResolver resolver;
++};
++
++TEST_F(StackwalkerAddressListTest, ScanWithoutSymbols) {
++  StackFrameSymbolizer frame_symbolizer(&supplier, &resolver);
++  StackwalkerAddressList walker(kDummyFrames, arraysize(kDummyFrames),
++                         &modules, &frame_symbolizer);
++
++  CallStack call_stack;
++  vector<const CodeModule*> modules_without_symbols;
++  vector<const CodeModule*> modules_with_corrupt_symbols;
++  ASSERT_TRUE(walker.Walk(&call_stack, &modules_without_symbols,
++                          &modules_with_corrupt_symbols));
++
++  // The stack starts in module2, so we expect that to be the first module
++  // found without symbols.
++  ASSERT_EQ(2U, modules_without_symbols.size());
++  ASSERT_EQ("module2", modules_without_symbols[0]->debug_file());
++  ASSERT_EQ("module1", modules_without_symbols[1]->debug_file());
++  ASSERT_EQ(0u, modules_with_corrupt_symbols.size());
++
++  ASSERT_NO_FATAL_FAILURE(CheckCallStack(call_stack));
++}
++
++TEST_F(StackwalkerAddressListTest, ScanWithSymbols) {
++  // File    : FILE number(dex) name
++  // Function: FUNC address(hex) size(hex) parameter_size(hex) name
++  // Line    : address(hex) size(hex) line(dec) filenum(dec)
++  SetModuleSymbols(&module2,
++                   "FILE 1 module2.cc\n"
++                   "FUNC 3000 100 10 mod2func3\n"
++                   "3000 10 1  1\n"
++                   "FUNC 2000 200 10 mod2func2\n"
++                   "FUNC 1000 300 10 mod2func1\n");
++  SetModuleSymbols(&module1,
++                   "FUNC 2000 200 10 mod1func2\n"
++                   "FUNC 1000 300 10 mod1func1\n");
++
++  StackFrameSymbolizer frame_symbolizer(&supplier, &resolver);
++  StackwalkerAddressList walker(kDummyFrames, arraysize(kDummyFrames),
++                         &modules, &frame_symbolizer);
++
++  CallStack call_stack;
++  vector<const CodeModule*> modules_without_symbols;
++  vector<const CodeModule*> modules_with_corrupt_symbols;
++  ASSERT_TRUE(walker.Walk(&call_stack, &modules_without_symbols,
++                          &modules_with_corrupt_symbols));
++
++  ASSERT_EQ(0u, modules_without_symbols.size());
++  ASSERT_EQ(0u, modules_with_corrupt_symbols.size());
++
++  ASSERT_NO_FATAL_FAILURE(CheckCallStack(call_stack));
++
++  const std::vector<StackFrame*>* frames = call_stack.frames();
++
++  // We have full file/line information for the first function call.
++  ASSERT_EQ("mod2func3", frames->at(0)->function_name);
++  ASSERT_EQ(0x50003000u, frames->at(0)->function_base);
++  ASSERT_EQ("module2.cc", frames->at(0)->source_file_name);
++  ASSERT_EQ(1, frames->at(0)->source_line);
++  ASSERT_EQ(0x50003000u, frames->at(0)->source_line_base);
++
++  ASSERT_EQ("mod2func2", frames->at(1)->function_name);
++  ASSERT_EQ(0x50002000u, frames->at(1)->function_base);
++
++  ASSERT_EQ("mod2func1", frames->at(2)->function_name);
++  ASSERT_EQ(0x50001000u, frames->at(2)->function_base);
++
++  ASSERT_EQ("mod1func2", frames->at(3)->function_name);
++  ASSERT_EQ(0x40002000u, frames->at(3)->function_base);
++
++  ASSERT_EQ("mod1func1", frames->at(4)->function_name);
++  ASSERT_EQ(0x40001000u, frames->at(4)->function_base);
++}
+diff --git a/toolkit/crashreporter/google-breakpad/src/processor/stackwalker_mips.cc b/toolkit/crashreporter/google-breakpad/src/processor/stackwalker_mips.cc
+new file mode 100644
+index 0000000..89e204d
+--- /dev/null
++++ b/toolkit/crashreporter/google-breakpad/src/processor/stackwalker_mips.cc
+@@ -0,0 +1,356 @@
++// Copyright (c) 2013 Google Inc.
++// All rights reserved.
++//
++// Redistribution and use in source and binary forms, with or without
++// modification, are permitted provided that the following conditions are
++// met:
++//
++//     * Redistributions of source code must retain the above copyright
++// notice, this list of conditions and the following disclaimer.
++//     * Redistributions in binary form must reproduce the above
++// copyright notice, this list of conditions and the following disclaimer
++// in the documentation and/or other materials provided with the
++// distribution.
++//     * Neither the name of Google Inc. nor the names of its
++// contributors may be used to endorse or promote products derived from
++// this software without specific prior written permission.
++//
++// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++// stackwalker_mips.cc: MIPS-specific stackwalker.
++//
++// See stackwalker_mips.h for documentation.
++//
++// Author: Tata Elxsi
++
++#include "common/scoped_ptr.h"
++#include "google_breakpad/processor/call_stack.h"
++#include "google_breakpad/processor/code_modules.h"
++#include "google_breakpad/processor/memory_region.h"
++#include "google_breakpad/processor/source_line_resolver_interface.h"
++#include "google_breakpad/processor/stack_frame_cpu.h"
++#include "processor/cfi_frame_info.h"
++#include "common/logging.h"
++#include "processor/postfix_evaluator-inl.h"
++#include "processor/stackwalker_mips.h"
++#include "processor/windows_frame_info.h"
++#include "google_breakpad/common/minidump_cpu_mips.h"
++
++namespace google_breakpad {
++
++StackwalkerMIPS::StackwalkerMIPS(const SystemInfo* system_info,
++                                 const MDRawContextMIPS* context,
++                                 MemoryRegion* memory,
++                                 const CodeModules* modules,
++                                 StackFrameSymbolizer* resolver_helper)
++    : Stackwalker(system_info, memory, modules, resolver_helper),
++      context_(context) {
++  if (memory_ && memory_->GetBase() + memory_->GetSize() - 1 > 0xffffffff) {
++    BPLOG(ERROR) << "Memory out of range for stackwalking: "
++                 << HexString(memory_->GetBase())
++                 << "+"
++                 << HexString(memory_->GetSize());
++    memory_ = NULL;
++  }
++}
++
++StackFrame* StackwalkerMIPS::GetContextFrame() {
++  if (!context_) {
++    BPLOG(ERROR) << "Can't get context frame without context.";
++    return NULL;
++  }
++
++  StackFrameMIPS* frame = new StackFrameMIPS();
++
++  // The instruction pointer is stored directly in a register, so pull it
++  // straight out of the CPU context structure.
++  frame->context = *context_;
++  frame->context_validity = StackFrameMIPS::CONTEXT_VALID_ALL;
++  frame->trust = StackFrame::FRAME_TRUST_CONTEXT;
++  frame->instruction = frame->context.epc;
++
++  return frame;
++}
++
++// Register names for mips.
++/*static const char* const kRegisterNames[] = {
++   "$zero", "$at", "$v0", "$v1", "$a0", "$a1", "$a2", "$a3", "$to", "$t1",
++   "$t2",   "$t3", "$t4", "$t5", "$t6", "$t7", "$s0", "$s1", "$s2", "$s3",
++   "$s4",   "$s5", "$s6", "$s7", "$t8", "$t9", "$k0", "$k1", "$gp", "$sp",
++   "$fp",   "$ra", NULL
++  // TODO(gordanac): add float point save registers
++};*/
++
++//LAZAR
++
++static const UniqueString *kRegisterNames[] = {
++    ToUniqueString("$zero"),  ToUniqueString("$t5"),
++    ToUniqueString("$at"),    ToUniqueString("$t6"),
++    ToUniqueString("$v0"),    ToUniqueString("$t7"),
++    ToUniqueString("$v1"),    ToUniqueString("$s0"),
++    ToUniqueString("$a0"),    ToUniqueString("$s1"),
++    ToUniqueString("$a1"),    ToUniqueString("$s2"),
++    ToUniqueString("$a2"),    ToUniqueString("$s3"),
++    ToUniqueString("$a3"),    ToUniqueString("$s4"),
++    ToUniqueString("$to"),    ToUniqueString("$s5"),
++    ToUniqueString("$t1"),    ToUniqueString("$s6"),
++    ToUniqueString("$t2"),    ToUniqueString("$s7"),
++    ToUniqueString("$t3"),    ToUniqueString("$t8"),
++    ToUniqueString("$t4"),    ToUniqueString("$t9"),
++    ToUniqueString("$k0"),    ToUniqueString("$k1"),
++    ToUniqueString("$gp"),    ToUniqueString("$fp"),
++    ToUniqueString("$sp"),    ToUniqueString("$ra"),
++    NULL
++  };
++
++
++
++StackFrameMIPS* StackwalkerMIPS::GetCallerByCFIFrameInfo(
++    const vector<StackFrame*>& frames,
++    CFIFrameInfo* cfi_frame_info) {
++  StackFrameMIPS* last_frame = static_cast<StackFrameMIPS*>(frames.back());
++
++  uint32_t sp = 0, pc = 0;
++
++  // Populate a dictionary with the valid register values in last_frame.
++  CFIFrameInfo::RegisterValueMap<uint32_t> callee_registers;
++  // Use the STACK CFI data to recover the caller's register values.
++  CFIFrameInfo::RegisterValueMap<uint32_t> caller_registers;
++
++  for (int i = 0; kRegisterNames[i]; ++i) {
++    caller_registers.set(kRegisterNames[i], last_frame->context.iregs[i]);
++    callee_registers.set(kRegisterNames[i], last_frame->context.iregs[i]);
++   
++   //LAZAR
++   // caller_registers[kRegisterNames[i]] = last_frame->context.iregs[i];
++   // callee_registers[kRegisterNames[i]] = last_frame->context.iregs[i];
++  }
++
++  if (!cfi_frame_info->FindCallerRegs(callee_registers, *memory_,
++                                      &caller_registers))  {
++    return NULL;
++  }
++
++  /*CFIFrameInfo::RegisterValueMap<uint32_t>::iterator entry =
++      caller_registers.find(".cfa");
++  
++  if (entry != caller_registers.end()) {
++    sp = entry->second;
++    caller_registers["$sp"] = entry->second;
++  }*/
++
++  //LAZAR
++  std::map<const UniqueString*, uint32_t> caller_registers_copy;
++  caller_registers.copy_to_map(&caller_registers_copy);
++  std::map<const UniqueString*, uint32_t>::const_iterator entry =
++	caller_registers_copy.find(ToUniqueString(".cfa"));
++
++  if (entry != caller_registers_copy.end()) {
++    sp = entry->second;
++    caller_registers.set(ToUniqueString("$sp"), entry->second);
++  }
++
++  /*entry = caller_registers.find(".ra");
++  if (entry != caller_registers.end()) {
++    caller_registers["$ra"] = entry->second;
++    pc = entry->second - 2 * sizeof(pc);
++  }*/
++
++  // LAZAR
++  caller_registers.copy_to_map(&caller_registers_copy);
++  entry = caller_registers_copy.find(ToUniqueString(".ra"));
++  if (entry != caller_registers_copy.end()) {
++  	caller_registers.set(ToUniqueString("$ra"), entry->second);
++  	pc = entry->second - 2 * sizeof(pc);
++  }
++  
++  //caller_registers["$pc"] = pc;
++  caller_registers.set(ToUniqueString("$oc"), pc);
++  // Construct a new stack frame given the values the CFI recovered.
++  scoped_ptr<StackFrameMIPS> frame(new StackFrameMIPS());
++
++  caller_registers.copy_to_map(&caller_registers_copy);
++  for (int i = 0; kRegisterNames[i]; ++i) {
++    //CFIFrameInfo::RegisterValueMap<uint32_t>::const_iterator caller_entry =
++    //    caller_registers.find(kRegisterNames[i]);
++    std::map<const UniqueString*, uint32_t>::const_iterator caller_entry =
++        caller_registers_copy.find(kRegisterNames[i]);
++
++    if (caller_entry != caller_registers_copy.end()) {
++      // The value of this register is recovered; fill the context with the
++      // value from caller_registers.
++      frame->context.iregs[i] = caller_entry->second;
++      frame->context_validity |= StackFrameMIPS::RegisterValidFlag(i);
++    } else if (((i >= INDEX_MIPS_REG_S0 && i <= INDEX_MIPS_REG_S7) ||
++                (i > INDEX_MIPS_REG_GP && i < INDEX_MIPS_REG_RA)) &&
++               (last_frame->context_validity &
++                StackFrameMIPS::RegisterValidFlag(i))) {
++      // If the STACK CFI data doesn't mention some callee-save register, and
++      // it is valid in the callee, assume the callee has not yet changed it.
++      // Calee-save registers according to the MIPS o32 ABI specification are:
++      // $s0 to $s7
++      // $sp, $s8
++      frame->context.iregs[i] = last_frame->context.iregs[i];
++      frame->context_validity |= StackFrameMIPS::RegisterValidFlag(i);
++    }
++  }
++
++//frame->context.epc = caller_registers["$pc"];
++//frame->instruction = caller_registers["$pc"];
++//LAZAR
++  frame->context.epc = caller_registers.get(ToUniqueString("$pc"));
++  frame->instruction = caller_registers.get(ToUniqueString("$pc"));
++  frame->context_validity |= StackFrameMIPS::CONTEXT_VALID_PC;
++  
++//frame->context.iregs[MD_CONTEXT_MIPS_REG_RA] = caller_registers["$ra"];
++  frame->context.iregs[MD_CONTEXT_MIPS_REG_RA] = caller_registers.get(ToUniqueString("$ra")); 
++  frame->context_validity |= StackFrameMIPS::CONTEXT_VALID_RA;
++
++  frame->trust = StackFrame::FRAME_TRUST_CFI;
++
++  return frame.release();
++}
++
++StackFrame* StackwalkerMIPS::GetCallerFrame(const CallStack* stack,
++                                            bool stack_scan_allowed) {
++  if (!memory_ || !stack) {
++    BPLOG(ERROR) << "Can't get caller frame without memory or stack";
++    return NULL;
++  }
++
++  const vector<StackFrame*>& frames = *stack->frames();
++  StackFrameMIPS* last_frame = static_cast<StackFrameMIPS*>(frames.back());
++  scoped_ptr<StackFrameMIPS> new_frame;
++
++  // See if there is DWARF call frame information covering this address.
++  scoped_ptr<CFIFrameInfo> cfi_frame_info(
++    frame_symbolizer_->FindCFIFrameInfo(last_frame));
++  if (cfi_frame_info.get())
++    new_frame.reset(GetCallerByCFIFrameInfo(frames, cfi_frame_info.get()));
++
++  // If caller frame is not found in CFI try analyzing the stack.
++  if (stack_scan_allowed && !new_frame.get()) {
++    new_frame.reset(GetCallerByStackScan(frames));
++  }
++
++  // If nothing worked, tell the caller.
++  if (!new_frame.get()) {
++    return NULL;
++  }
++
++  // Treat an instruction address of 0 as end-of-stack.
++  if (new_frame->context.epc == 0) {
++    return NULL;
++  }
++
++  // If the new stack pointer is at a lower address than the old, then
++  // that's clearly incorrect. Treat this as end-of-stack to enforce
++  // progress and avoid infinite loops.
++  if (new_frame->context.iregs[MD_CONTEXT_MIPS_REG_SP] <=
++      last_frame->context.iregs[MD_CONTEXT_MIPS_REG_SP]) {
++    return NULL;
++  }
++  
++  return new_frame.release();
++}
++
++StackFrameMIPS* StackwalkerMIPS::GetCallerByStackScan(
++    const vector<StackFrame*>& frames) {
++  const uint32_t kMaxFrameStackSize = 1024;
++  const uint32_t kMinArgsOnStack = 4;
++
++  StackFrameMIPS* last_frame = static_cast<StackFrameMIPS*>(frames.back());
++
++  uint32_t last_sp = last_frame->context.iregs[MD_CONTEXT_MIPS_REG_SP];
++  uint32_t caller_pc, caller_sp, caller_fp;
++
++  // Return address cannot be obtained directly.
++  // Force stackwalking.
++
++  // We cannot use frame pointer to get the return address.
++  // We'll scan the stack for a
++  // return address. This can happen if last_frame is executing code
++  // for a module for which we don't have symbols.
++  int count = kMaxFrameStackSize / sizeof(caller_pc);
++
++  if (frames.size() > 1) {
++      // In case of mips32 ABI stack frame of a nonleaf function
++      // must have minimum stack frame assigned for 4 arguments (4 words).
++      // Move stack pointer for 4 words to avoid reporting non-existing frames
++      // for all frames except the topmost one.
++      // There is no way of knowing if topmost frame belongs to a leaf or
++      // a nonleaf function.
++      last_sp +=  kMinArgsOnStack * sizeof(caller_pc);
++      // Adjust 'count' so that return address is scanned only in limits 
++      // of one stack frame.
++      count -= kMinArgsOnStack;
++  }
++
++  do {
++    // Scanning for return address from stack pointer of the last frame.
++    if (!ScanForReturnAddress(last_sp, &caller_sp, &caller_pc, count)) {
++      // If we can't find an instruction pointer even with stack scanning,
++      // give up.
++      BPLOG(ERROR) << " ScanForReturnAddress failed ";
++      return NULL;
++    }
++    // Get $fp stored in the stack frame.
++    if (!memory_->GetMemoryAtAddress(caller_sp - sizeof(caller_pc),
++                                     &caller_fp)) {
++      BPLOG(INFO) << " GetMemoryAtAddress for fp failed " ;
++      return NULL;
++    }
++
++    count = count - (caller_sp - last_sp) / sizeof(caller_pc);
++    // Now scan the next address in the stack.
++    last_sp = caller_sp + sizeof(caller_pc);
++  } while ((caller_fp - caller_sp >= kMaxFrameStackSize) && count > 0);
++
++  if (!count) {
++    BPLOG(INFO) << " No frame found " ;
++    return NULL;
++  }
++
++  // ScanForReturnAddress found a reasonable return address. Advance
++  // $sp to the location above the one where the return address was
++  // found. 
++  caller_sp += sizeof(caller_pc);
++  // caller_pc is actually containing $ra value;
++  // $pc is two instructions before $ra,
++  // so the caller_pc needs to be decremented accordingly.
++  caller_pc -= 2 * sizeof(caller_pc);
++
++
++  // Create a new stack frame (ownership will be transferred to the caller)
++  // and fill it in.
++  StackFrameMIPS* frame = new StackFrameMIPS();
++  frame->trust = StackFrame::FRAME_TRUST_SCAN;
++  frame->context = last_frame->context;
++  frame->context.epc = caller_pc;
++  frame->context_validity |= StackFrameMIPS::CONTEXT_VALID_PC;
++  frame->instruction = caller_pc;
++
++  frame->context.iregs[MD_CONTEXT_MIPS_REG_SP] = caller_sp;
++  frame->context_validity |= StackFrameMIPS::CONTEXT_VALID_SP;
++  frame->context.iregs[MD_CONTEXT_MIPS_REG_FP] = caller_fp;
++  frame->context_validity |= StackFrameMIPS::CONTEXT_VALID_FP;
++
++  frame->context.iregs[MD_CONTEXT_MIPS_REG_RA] =
++      caller_pc + 2 * sizeof(caller_pc);
++  frame->context_validity |= StackFrameMIPS::CONTEXT_VALID_RA;
++
++  return frame;
++}
++
++}  // namespace google_breakpad
++
+diff --git a/toolkit/crashreporter/google-breakpad/src/processor/stackwalker_mips.h b/toolkit/crashreporter/google-breakpad/src/processor/stackwalker_mips.h
+new file mode 100644
+index 0000000..5f97791
+--- /dev/null
++++ b/toolkit/crashreporter/google-breakpad/src/processor/stackwalker_mips.h
+@@ -0,0 +1,85 @@
++// Copyright (c) 2013 Google Inc.
++// All rights reserved.
++//
++// Redistribution and use in source and binary forms, with or without
++// modification, are permitted provided that the following conditions are
++// met:
++//
++//     * Redistributions of source code must retain the above copyright
++// notice, this list of conditions and the following disclaimer.
++//     * Redistributions in binary form must reproduce the above
++// copyright notice, this list of conditions and the following disclaimer
++// in the documentation and/or other materials provided with the
++// distribution.
++//     * Neither the name of Google Inc. nor the names of its
++// contributors may be used to endorse or promote products derived from
++// this software without specific prior written permission.
++//
++// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++// stackwalker_mips.h: MIPS-specific stackwalker.
++//
++// Provides stack frames given MIPS register context and a memory region
++// corresponding to a MIPSstack.
++//
++// Author: Tata Elxsi
++
++#ifndef PROCESSOR_STACKWALKER_MIPS_H__
++#define PROCESSOR_STACKWALKER_MIPS_H__
++
++#include "google_breakpad/common/breakpad_types.h"
++#include "google_breakpad/common/minidump_format.h"
++#include "google_breakpad/processor/stackwalker.h"
++#include "google_breakpad/processor/stack_frame_cpu.h"
++#include "processor/cfi_frame_info.h"
++
++namespace google_breakpad {
++
++class CodeModules;
++
++class StackwalkerMIPS : public Stackwalker {
++ public:
++  // Context is a MIPS context object that gives access to mips-specific
++  // register state corresponding to the innermost called frame to be
++  // included in the stack.  The other arguments are passed directly
++  // through to the base Stackwalker constructor.
++  StackwalkerMIPS(const SystemInfo* system_info,
++                  const MDRawContextMIPS* context,
++                  MemoryRegion* memory,
++                  const CodeModules* modules,
++                  StackFrameSymbolizer* frame_symbolizer);
++
++ private:
++  // Implementation of Stackwalker, using mips context and stack conventions.
++  virtual StackFrame* GetContextFrame();
++  virtual StackFrame* GetCallerFrame(const CallStack* stack,
++                                     bool stack_scan_allowed);
++
++  // Use cfi_frame_info (derived from STACK CFI records) to construct
++  // the frame that called frames.back(). The caller takes ownership
++  // of the returned frame. Return NULL on failure.
++  StackFrameMIPS* GetCallerByCFIFrameInfo(const vector<StackFrame*>& frames,
++                                          CFIFrameInfo* cfi_frame_info);
++
++  // Scan the stack for plausible return address and frame pointer pair. 
++  // The caller takes ownership of the returned frame. Return NULL on failure.
++  StackFrameMIPS* GetCallerByStackScan(const vector<StackFrame*>& frames);
++
++  // Stores the CPU context corresponding to the innermost stack frame to
++  // be returned by GetContextFrame.
++  const MDRawContextMIPS* context_;
++};
++
++}  // namespace google_breakpad
++
++#endif  // PROCESSOR_STACKWALKER_MIPS_H__
+diff --git a/toolkit/crashreporter/google-breakpad/src/processor/stackwalker_mips_unittest.cc b/toolkit/crashreporter/google-breakpad/src/processor/stackwalker_mips_unittest.cc
+new file mode 100644
+index 0000000..ed4be4f
+--- /dev/null
++++ b/toolkit/crashreporter/google-breakpad/src/processor/stackwalker_mips_unittest.cc
+@@ -0,0 +1,697 @@
++// Copyright (c) 2013, Google Inc.
++// All rights reserved.
++//
++// Redistribution and use in source and binary forms, with or without
++// modification, are permitted provided that the following conditions are
++// met:
++//
++//     * Redistributions of source code must retain the above copyright
++// notice, this list of conditions and the following disclaimer.
++//     * Redistributions in binary form must reproduce the above
++// copyright notice, this list of conditions and the following disclaimer
++// in the documentation and/or other materials provided with the
++// distribution.
++//     * Neither the name of Google Inc. nor the names of its
++// contributors may be used to endorse or promote products derived from
++// this software without specific prior written permission.
++//
++// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++
++// Original author: Gordana Cmiljanovic <gordana.cmiljanovic@imgtec.com>
++
++// stackwalker_mips_unittest.cc: Unit tests for StackwalkerMIPS class.
++
++#include <string.h>
++#include <string>
++#include <vector>
++
++#include "breakpad_googletest_includes.h"
++#include "common/test_assembler.h"
++#include "common/using_std_string.h"
++#include "google_breakpad/common/minidump_format.h"
++#include "google_breakpad/processor/basic_source_line_resolver.h"
++#include "google_breakpad/processor/call_stack.h"
++#include "google_breakpad/processor/code_module.h"
++#include "google_breakpad/processor/source_line_resolver_interface.h"
++#include "google_breakpad/processor/stack_frame_cpu.h"
++#include "processor/stackwalker_unittest_utils.h"
++#include "processor/stackwalker_mips.h"
++#include "processor/windows_frame_info.h"
++
++using google_breakpad::BasicSourceLineResolver;
++using google_breakpad::CallStack;
++using google_breakpad::CodeModule;
++using google_breakpad::StackFrameSymbolizer;
++using google_breakpad::StackFrame;
++using google_breakpad::StackFrameMIPS;
++using google_breakpad::Stackwalker;
++using google_breakpad::StackwalkerMIPS;
++using google_breakpad::SystemInfo;
++using google_breakpad::WindowsFrameInfo;
++using google_breakpad::test_assembler::kLittleEndian;
++using google_breakpad::test_assembler::Label;
++using google_breakpad::test_assembler::Section;
++using std::vector;
++using testing::_;
++using testing::AnyNumber;
++using testing::Return;
++using testing::SetArgumentPointee;
++using testing::Test;
++
++class StackwalkerMIPSFixture {
++ public:
++  StackwalkerMIPSFixture()
++    : stack_section(kLittleEndian),
++      // Give the two modules reasonable standard locations and names
++      // for tests to play with.
++      module1(0x00400000, 0x10000, "module1", "version1"),
++      module2(0x00500000, 0x10000, "module2", "version2") {
++    // Identify the system as a Linux system.
++    system_info.os = "Linux";
++    system_info.os_short = "linux";
++    system_info.os_version = "Observant Opossum";  // Jealous Jellyfish
++    system_info.cpu = "mips";
++    system_info.cpu_info = "";
++
++    // Put distinctive values in the raw CPU context.
++    BrandContext(&raw_context);
++
++    // Create some modules with some stock debugging information.
++    modules.Add(&module1);
++    modules.Add(&module2);
++
++    // By default, none of the modules have symbol info; call
++    // SetModuleSymbols to override this.
++    EXPECT_CALL(supplier, GetCStringSymbolData(_, _, _, _, _))
++      .WillRepeatedly(Return(MockSymbolSupplier::NOT_FOUND));
++
++    // Avoid GMOCK WARNING "Uninteresting mock function call - returning
++    // directly" for FreeSymbolData().
++    EXPECT_CALL(supplier, FreeSymbolData(_)).Times(AnyNumber());
++
++    // Reset max_frames_scanned since it's static.
++    Stackwalker::set_max_frames_scanned(1024);    
++  }
++
++  // Set the Breakpad symbol information that supplier should return for
++  // MODULE to INFO.
++  void SetModuleSymbols(MockCodeModule* module, const string& info) {
++    size_t buffer_size;
++    char* buffer = supplier.CopySymbolDataAndOwnTheCopy(info, &buffer_size);
++    EXPECT_CALL(supplier, GetCStringSymbolData(module, &system_info, _, _, _))
++      .WillRepeatedly(DoAll(SetArgumentPointee<3>(buffer),
++                            SetArgumentPointee<4>(buffer_size),
++                            Return(MockSymbolSupplier::FOUND)));
++  }
++
++  // Populate stack_region with the contents of stack_section. Use
++  // stack_section.start() as the region's starting address.
++  void RegionFromSection() {
++    string contents;
++    ASSERT_TRUE(stack_section.GetContents(&contents));
++    stack_region.Init(stack_section.start().Value(), contents);
++  }
++
++  // Fill RAW_CONTEXT with pseudo-random data, for round-trip checking.
++  void BrandContext(MDRawContextMIPS* raw_context) {
++    uint8_t x = 173;
++    for (size_t i = 0; i < sizeof(*raw_context); ++i)
++      reinterpret_cast<uint8_t*>(raw_context)[i] = (x += 17);
++  }
++
++  SystemInfo system_info;
++  MDRawContextMIPS raw_context;
++  Section stack_section;
++  MockMemoryRegion stack_region;
++  MockCodeModule module1;
++  MockCodeModule module2;
++  MockCodeModules modules;
++  MockSymbolSupplier supplier;
++  BasicSourceLineResolver resolver;
++  CallStack call_stack;
++  const vector<StackFrame*>* frames;
++};
++
++class SanityCheck: public StackwalkerMIPSFixture, public Test { };
++
++TEST_F(SanityCheck, NoResolver) {
++  stack_section.start() = 0x80000000;
++  stack_section.D32(0).D32(0x0);
++  RegionFromSection();
++  raw_context.epc = 0x00400020;
++  raw_context.iregs[MD_CONTEXT_MIPS_REG_SP] = 0x80000000;
++
++  StackFrameSymbolizer frame_symbolizer(NULL, NULL);
++  StackwalkerMIPS walker(&system_info, &raw_context, &stack_region, &modules,
++                        &frame_symbolizer);
++  // This should succeed, even without a resolver or supplier.
++  vector<const CodeModule*> modules_without_symbols;
++  vector<const CodeModule*> modules_with_corrupt_symbols;
++  ASSERT_TRUE(walker.Walk(&call_stack, &modules_without_symbols,
++                          &modules_with_corrupt_symbols));
++  ASSERT_EQ(1U, modules_without_symbols.size());
++  ASSERT_EQ("module1", modules_without_symbols[0]->debug_file());
++  ASSERT_EQ(0U, modules_with_corrupt_symbols.size());
++  frames = call_stack.frames();
++  ASSERT_EQ(1U, frames->size());
++  StackFrameMIPS* frame = static_cast<StackFrameMIPS*>(frames->at(0));
++  // Check that the values from the original raw context made it
++  // through to the context in the stack frame.
++  EXPECT_EQ(0, memcmp(&raw_context, &frame->context, sizeof(raw_context)));
++}
++
++class GetContextFrame: public StackwalkerMIPSFixture, public Test { };
++
++TEST_F(GetContextFrame, Simple) {
++  stack_section.start() = 0x80000000;
++  stack_section.D32(0).D32(0x0);
++  RegionFromSection();
++  raw_context.epc = 0x00400020;
++  raw_context.iregs[MD_CONTEXT_MIPS_REG_SP] = 0x80000000;
++
++  StackFrameSymbolizer frame_symbolizer(&supplier, &resolver);
++  StackwalkerMIPS walker(&system_info, &raw_context, &stack_region, &modules,
++                         &frame_symbolizer);
++  vector<const CodeModule*> modules_without_symbols;
++  vector<const CodeModule*> modules_with_corrupt_symbols;
++  ASSERT_TRUE(walker.Walk(&call_stack, &modules_without_symbols,
++                          &modules_with_corrupt_symbols));
++  ASSERT_EQ(1U, modules_without_symbols.size());
++  ASSERT_EQ("module1", modules_without_symbols[0]->debug_file());
++  ASSERT_EQ(0U, modules_with_corrupt_symbols.size());
++  frames = call_stack.frames();
++  StackFrameMIPS* frame = static_cast<StackFrameMIPS*>(frames->at(0));
++  // Check that the values from the original raw context made it
++  // through to the context in the stack frame.
++  EXPECT_EQ(0, memcmp(&raw_context, &frame->context, sizeof(raw_context)));
++}
++
++// The stackwalker should be able to produce the context frame even
++// without stack memory present.
++TEST_F(GetContextFrame, NoStackMemory) {
++  raw_context.epc = 0x00400020;
++  raw_context.iregs[MD_CONTEXT_MIPS_REG_SP] = 0x80000000;
++
++  StackFrameSymbolizer frame_symbolizer(&supplier, &resolver);
++  StackwalkerMIPS walker(&system_info, &raw_context, NULL, &modules,
++                         &frame_symbolizer);
++  vector<const CodeModule*> modules_without_symbols;
++  vector<const CodeModule*> modules_with_corrupt_symbols;
++  ASSERT_TRUE(walker.Walk(&call_stack, &modules_without_symbols,
++                          &modules_with_corrupt_symbols));
++  ASSERT_EQ(1U, modules_without_symbols.size());
++  ASSERT_EQ("module1", modules_without_symbols[0]->debug_file());
++  ASSERT_EQ(0U, modules_with_corrupt_symbols.size());
++  frames = call_stack.frames();
++  StackFrameMIPS* frame = static_cast<StackFrameMIPS*>(frames->at(0));
++  // Check that the values from the original raw context made it
++  // through to the context in the stack frame.
++  EXPECT_EQ(0, memcmp(&raw_context, &frame->context, sizeof(raw_context)));
++}
++
++class GetCallerFrame: public StackwalkerMIPSFixture, public Test { };
++
++TEST_F(GetCallerFrame, ScanWithoutSymbols) {
++  // When the stack walker resorts to scanning the stack,
++  // only addresses located within loaded modules are
++  // considered valid return addresses.
++  // Force scanning through three frames to ensure that the
++  // stack pointer is set properly in scan-recovered frames.
++  stack_section.start() = 0x80000000;
++  uint32_t return_address1 = 0x00400100;
++  uint32_t return_address2 = 0x00400900;
++  Label frame1_sp, frame2_sp;
++  stack_section
++    // frame 0
++    .Append(16, 0)                      // space
++
++    .D32(0x00490000)                    // junk that's not
++    .D32(0x00600000)                    // a return address
++
++    .D32(frame1_sp)                     // stack pointer
++    .D32(return_address1)               // actual return address
++    // frame 1
++    .Mark(&frame1_sp)
++    .Append(16, 0)                      // space
++
++    .D32(0xF0000000)                    // more junk
++    .D32(0x0000000D)
++
++    .D32(frame2_sp)                     // stack pointer
++    .D32(return_address2)               // actual return address
++    // frame 2
++    .Mark(&frame2_sp)
++    .Append(32, 0);                     // end of stack
++  RegionFromSection();
++
++  raw_context.epc = 0x00405510;
++  raw_context.iregs[MD_CONTEXT_MIPS_REG_SP] = stack_section.start().Value();
++  raw_context.iregs[MD_CONTEXT_MIPS_REG_RA] = return_address1;
++
++  StackFrameSymbolizer frame_symbolizer(&supplier, &resolver);
++  StackwalkerMIPS walker(&system_info, &raw_context, &stack_region, &modules,
++                         &frame_symbolizer);
++  vector<const CodeModule*> modules_without_symbols;
++  vector<const CodeModule*> modules_with_corrupt_symbols;
++  ASSERT_TRUE(walker.Walk(&call_stack, &modules_without_symbols,
++                          &modules_with_corrupt_symbols));
++  ASSERT_EQ(1U, modules_without_symbols.size());
++  ASSERT_EQ("module1", modules_without_symbols[0]->debug_file());
++  ASSERT_EQ(0U, modules_with_corrupt_symbols.size());
++  frames = call_stack.frames();
++  ASSERT_EQ(3U, frames->size());
++
++  StackFrameMIPS* frame0 = static_cast<StackFrameMIPS*>(frames->at(0));
++  EXPECT_EQ(StackFrame::FRAME_TRUST_CONTEXT, frame0->trust);
++  ASSERT_EQ(StackFrameMIPS::CONTEXT_VALID_ALL, frame0->context_validity);
++  EXPECT_EQ(0, memcmp(&raw_context, &frame0->context, sizeof(raw_context)));
++
++  StackFrameMIPS* frame1 = static_cast<StackFrameMIPS*>(frames->at(1));
++  EXPECT_EQ(StackFrame::FRAME_TRUST_SCAN, frame1->trust);
++  ASSERT_EQ((StackFrameMIPS::CONTEXT_VALID_PC |
++             StackFrameMIPS::CONTEXT_VALID_SP |
++             StackFrameMIPS::CONTEXT_VALID_FP |
++             StackFrameMIPS::CONTEXT_VALID_RA),
++            frame1->context_validity);
++  EXPECT_EQ(return_address1 - 2 * sizeof(return_address1), frame1->context.epc);
++  EXPECT_EQ(frame1_sp.Value(), frame1->context.iregs[MD_CONTEXT_MIPS_REG_SP]);
++
++  StackFrameMIPS* frame2 = static_cast<StackFrameMIPS*>(frames->at(2));
++  EXPECT_EQ(StackFrame::FRAME_TRUST_SCAN, frame2->trust);
++  ASSERT_EQ((StackFrameMIPS::CONTEXT_VALID_PC |
++             StackFrameMIPS::CONTEXT_VALID_SP |
++             StackFrameMIPS::CONTEXT_VALID_FP |
++             StackFrameMIPS::CONTEXT_VALID_RA),
++            frame2->context_validity);
++  EXPECT_EQ(return_address2 - 2 * sizeof(return_address2), frame2->context.epc);
++  EXPECT_EQ(frame2_sp.Value(), frame2->context.iregs[MD_CONTEXT_MIPS_REG_SP]);
++}
++
++TEST_F(GetCallerFrame, ScanWithFunctionSymbols) {
++  // During stack scanning, if a potential return address
++  // is located within a loaded module that has symbols,
++  // it is only considered a valid return address if it
++  // lies within a function's bounds.
++  stack_section.start() = 0x80000000;
++  uint32_t return_address = 0x00500200;
++  Label frame1_sp;
++  stack_section
++    // frame 0
++    .Append(16, 0)                      // space
++
++    .D32(0x00490000)                    // junk that's not
++    .D32(0x00600000)                    // a return address
++    
++    .D32(0x00401000)                    // a couple of plausible addresses
++    .D32(0x0050F000)                    // that are not within functions
++
++    .D32(frame1_sp)                     // stack pointer
++    .D32(return_address)                // actual return address
++    // frame 1
++    .Mark(&frame1_sp)
++    .Append(32, 0);                     // end of stack
++  RegionFromSection();
++
++  raw_context.epc = 0x00400200;
++  raw_context.iregs[MD_CONTEXT_MIPS_REG_SP] = stack_section.start().Value();
++  raw_context.iregs[MD_CONTEXT_MIPS_REG_RA] = return_address;
++
++  SetModuleSymbols(&module1,
++                   // The youngest frame's function.
++                   "FUNC 100 400 10 monotreme\n");
++  SetModuleSymbols(&module2,
++                   // The calling frame's function.
++                   "FUNC 100 400 10 marsupial\n");
++
++  StackFrameSymbolizer frame_symbolizer(&supplier, &resolver);
++  StackwalkerMIPS walker(&system_info, &raw_context, &stack_region, &modules,
++                         &frame_symbolizer);
++  vector<const CodeModule*> modules_without_symbols;
++  vector<const CodeModule*> modules_with_corrupt_symbols;
++  ASSERT_TRUE(walker.Walk(&call_stack, &modules_without_symbols,
++                          &modules_with_corrupt_symbols));
++  ASSERT_EQ(0U, modules_without_symbols.size());
++  ASSERT_EQ(0U, modules_with_corrupt_symbols.size());
++  frames = call_stack.frames();
++  ASSERT_EQ(2U, frames->size());
++
++  StackFrameMIPS* frame0 = static_cast<StackFrameMIPS*>(frames->at(0));
++  EXPECT_EQ(StackFrame::FRAME_TRUST_CONTEXT, frame0->trust);
++  ASSERT_EQ(StackFrameMIPS::CONTEXT_VALID_ALL, frame0->context_validity);
++  EXPECT_EQ(0, memcmp(&raw_context, &frame0->context, sizeof(raw_context)));
++  EXPECT_EQ("monotreme", frame0->function_name);
++  EXPECT_EQ(0x00400100U, frame0->function_base);
++
++  StackFrameMIPS* frame1 = static_cast<StackFrameMIPS*>(frames->at(1));
++  EXPECT_EQ(StackFrame::FRAME_TRUST_SCAN, frame1->trust);
++  ASSERT_EQ((StackFrameMIPS::CONTEXT_VALID_PC |
++             StackFrameMIPS::CONTEXT_VALID_SP |
++             StackFrameMIPS::CONTEXT_VALID_FP |
++             StackFrameMIPS::CONTEXT_VALID_RA),
++            frame1->context_validity);
++  EXPECT_EQ(return_address - 2 * sizeof(return_address), frame1->context.epc);
++  EXPECT_EQ(frame1_sp.Value(), frame1->context.iregs[MD_CONTEXT_MIPS_REG_SP]);
++  EXPECT_EQ("marsupial", frame1->function_name);
++  EXPECT_EQ(0x00500100U, frame1->function_base);
++}
++
++TEST_F(GetCallerFrame, CheckStackFrameSizeLimit) {
++  // If the stackwalker resorts to stack scanning, it will scan only
++  // 1024 bytes of stack which correspondes to maximum size of stack frame.
++  stack_section.start() = 0x80000000;
++  uint32_t return_address1 = 0x00500100;
++  uint32_t return_address2 = 0x00500900;
++  Label frame1_sp, frame2_sp;
++  stack_section
++    // frame 0
++    .Append(32, 0)                      // space
++
++    .D32(0x00490000)                    // junk that's not
++    .D32(0x00600000)                    // a return address
++
++    .Append(96, 0)                      // more space
++
++    .D32(frame1_sp)                     // stack pointer
++    .D32(return_address1)               // actual return address
++    // frame 1
++    .Mark(&frame1_sp)
++    .Append(128 * 4, 0)                 // space
++
++    .D32(0x00F00000)                    // more junk
++    .D32(0x0000000D)
++
++    .Append(128 * 4, 0)                 // more space
++
++    .D32(frame2_sp)                     // stack pointer
++    .D32(return_address2)               // actual return address
++                                        // (won't be found)
++    // frame 2
++    .Mark(&frame2_sp)
++    .Append(32, 0);                     // end of stack
++  RegionFromSection();
++
++  raw_context.epc = 0x00405510;
++  raw_context.iregs[MD_CONTEXT_MIPS_REG_SP] = stack_section.start().Value();
++  raw_context.iregs[MD_CONTEXT_MIPS_REG_RA] = return_address1;
++
++  StackFrameSymbolizer frame_symbolizer(&supplier, &resolver);
++  StackwalkerMIPS walker(&system_info, &raw_context, &stack_region, &modules,
++                         &frame_symbolizer);
++  vector<const CodeModule*> modules_without_symbols;
++  vector<const CodeModule*> modules_with_corrupt_symbols;
++  ASSERT_TRUE(walker.Walk(&call_stack, &modules_without_symbols,
++                          &modules_with_corrupt_symbols));
++  ASSERT_EQ(2U, modules_without_symbols.size());
++  ASSERT_EQ("module1", modules_without_symbols[0]->debug_file());
++  ASSERT_EQ("module2", modules_without_symbols[1]->debug_file());
++  ASSERT_EQ(0U, modules_with_corrupt_symbols.size());
++  frames = call_stack.frames();
++  ASSERT_EQ(2U, frames->size());
++
++  StackFrameMIPS* frame0 = static_cast<StackFrameMIPS*>(frames->at(0));
++  EXPECT_EQ(StackFrame::FRAME_TRUST_CONTEXT, frame0->trust);
++  ASSERT_EQ(StackFrameMIPS::CONTEXT_VALID_ALL, frame0->context_validity);
++  EXPECT_EQ(0, memcmp(&raw_context, &frame0->context, sizeof(raw_context)));
++
++  StackFrameMIPS* frame1 = static_cast<StackFrameMIPS*>(frames->at(1));
++  EXPECT_EQ(StackFrame::FRAME_TRUST_SCAN, frame1->trust);
++  ASSERT_EQ((StackFrameMIPS::CONTEXT_VALID_PC |
++             StackFrameMIPS::CONTEXT_VALID_SP |
++             StackFrameMIPS::CONTEXT_VALID_FP |
++             StackFrameMIPS::CONTEXT_VALID_RA),
++            frame1->context_validity);
++  EXPECT_EQ(return_address1 - 2 * sizeof(return_address1), frame1->context.epc);
++  EXPECT_EQ(frame1_sp.Value(), frame1->context.iregs[MD_CONTEXT_MIPS_REG_SP]);
++}
++
++// Test that set_max_frames_scanned prevents using stack scanning
++// to find caller frames.
++TEST_F(GetCallerFrame, ScanningNotAllowed) {
++  // When the stack walker resorts to scanning the stack,
++  // only fixed number of frames are allowed to be scanned out from stack
++  stack_section.start() = 0x80000000;
++  uint32_t return_address1 = 0x00500100;
++  uint32_t return_address2 = 0x00500900;
++  Label frame1_sp, frame2_sp;
++  stack_section
++    // frame 0
++    .Append(32, 0)                      // space
++
++    .D32(0x00490000)                    // junk that's not
++    .D32(0x00600000)                    // a return address
++
++    .Append(96, 0)                      // more space
++
++    .D32(frame1_sp)                     // stack pointer
++    .D32(return_address1)               // actual return address
++    // frame 1
++    .Mark(&frame1_sp)
++    .Append(128 * 4, 0)                 // space
++
++    .D32(0x00F00000)                    // more junk
++    .D32(0x0000000D)
++
++    .Append(128 * 4, 0)                 // more space
++
++    .D32(frame2_sp)                     // stack pointer
++    .D32(return_address2)               // actual return address
++                                        // (won't be found)
++    // frame 2
++    .Mark(&frame2_sp)
++    .Append(32, 0);                     // end of stack
++  RegionFromSection();
++
++  raw_context.epc = 0x00405510;
++  raw_context.iregs[MD_CONTEXT_MIPS_REG_SP] = stack_section.start().Value();
++  raw_context.iregs[MD_CONTEXT_MIPS_REG_RA] = return_address1;
++
++  StackFrameSymbolizer frame_symbolizer(&supplier, &resolver);
++  StackwalkerMIPS walker(&system_info, &raw_context, &stack_region, &modules,
++                         &frame_symbolizer);
++  Stackwalker::set_max_frames_scanned(0);
++                         
++  vector<const CodeModule*> modules_without_symbols;
++  vector<const CodeModule*> modules_with_corrupt_symbols;
++  ASSERT_TRUE(walker.Walk(&call_stack, &modules_without_symbols,
++                          &modules_with_corrupt_symbols));
++  ASSERT_EQ(1U, modules_without_symbols.size());
++  ASSERT_EQ("module1", modules_without_symbols[0]->debug_file());
++  ASSERT_EQ(0U, modules_with_corrupt_symbols.size());
++  frames = call_stack.frames();
++  ASSERT_EQ(1U, frames->size());
++
++  StackFrameMIPS* frame0 = static_cast<StackFrameMIPS*>(frames->at(0));
++  EXPECT_EQ(StackFrame::FRAME_TRUST_CONTEXT, frame0->trust);
++  ASSERT_EQ(StackFrameMIPS::CONTEXT_VALID_ALL, frame0->context_validity);
++  EXPECT_EQ(0, memcmp(&raw_context, &frame0->context, sizeof(raw_context)));
++}
++
++struct CFIFixture: public StackwalkerMIPSFixture {
++  CFIFixture() {
++    // Provide some STACK CFI records;
++    SetModuleSymbols(&module1,
++                     // The youngest frame's function.
++                     "FUNC 4000 1000 0 enchiridion\n"
++                     // Initially, nothing has been pushed on the stack,
++                     // and the return address is still in the $ra register.
++                     "STACK CFI INIT 4000 1000 .cfa: $sp 0 + .ra: $ra\n"
++                     // Move stack pointer.
++                     "STACK CFI 4004 .cfa: $sp 32 +\n"
++                     // store $fp and ra
++                     "STACK CFI 4008 $fp: .cfa -8 + ^ .ra: .cfa -4 + ^\n"
++                     // restore $fp
++                     "STACK CFI 400c .cfa: $fp 32 +\n"
++                     // restore $sp
++                     "STACK CFI 4018 .cfa: $sp 32 +\n"
++
++                     "STACK CFI 4020 $fp: $fp .cfa: $sp 0 + .ra: .ra\n"
++
++                     // The calling function.
++                     "FUNC 5000 1000 0 epictetus\n"
++                     // Initially, nothing has been pushed on the stack,
++                     // and the return address is still in the $ra register.
++                     "STACK CFI INIT 5000 1000 .cfa: $sp .ra: $ra\n"
++                     // Mark it as end of stack.
++                     "STACK CFI INIT 5000 8 .cfa: $sp 0 + .ra: $ra\n"
++
++                     // A function whose CFI makes the stack pointer
++                     // go backwards.
++                     "FUNC 6000 1000 20 palinal\n"
++                     "STACK CFI INIT 6000 1000 .cfa: $sp 4 - .ra: $ra\n"
++
++                     // A function with CFI expressions that can't be
++                     // evaluated.
++                     "FUNC 7000 1000 20 rhetorical\n"
++                     "STACK CFI INIT 7000 1000 .cfa: moot .ra: ambiguous\n"
++                   );
++
++    // Provide some distinctive values for the caller's registers.
++    expected.epc = 0x00405508;
++    expected.iregs[MD_CONTEXT_MIPS_REG_S0] = 0x0;
++    expected.iregs[MD_CONTEXT_MIPS_REG_S1] = 0x1;
++    expected.iregs[MD_CONTEXT_MIPS_REG_S2] = 0x2;
++    expected.iregs[MD_CONTEXT_MIPS_REG_S3] = 0x3;
++    expected.iregs[MD_CONTEXT_MIPS_REG_S4] = 0x4;
++    expected.iregs[MD_CONTEXT_MIPS_REG_S5] = 0x5;
++    expected.iregs[MD_CONTEXT_MIPS_REG_S6] = 0x6;
++    expected.iregs[MD_CONTEXT_MIPS_REG_S7] = 0x7;
++    expected.iregs[MD_CONTEXT_MIPS_REG_SP] = 0x80000000;
++    expected.iregs[MD_CONTEXT_MIPS_REG_FP] = 0x80000000;
++    expected.iregs[MD_CONTEXT_MIPS_REG_RA] = 0x00405510;
++
++    // Expect CFI to recover all callee-save registers. Since CFI is the
++    // only stack frame construction technique we have, aside from the
++    // context frame itself, there's no way for us to have a set of valid
++    // registers smaller than this.
++    expected_validity = (StackFrameMIPS::CONTEXT_VALID_PC |
++                         StackFrameMIPS::CONTEXT_VALID_S0 |
++                         StackFrameMIPS::CONTEXT_VALID_S1 |
++                         StackFrameMIPS::CONTEXT_VALID_S2 |
++                         StackFrameMIPS::CONTEXT_VALID_S3 |
++                         StackFrameMIPS::CONTEXT_VALID_S4 |
++                         StackFrameMIPS::CONTEXT_VALID_S5 |
++                         StackFrameMIPS::CONTEXT_VALID_S6 |
++                         StackFrameMIPS::CONTEXT_VALID_S7 |
++                         StackFrameMIPS::CONTEXT_VALID_SP |
++                         StackFrameMIPS::CONTEXT_VALID_FP |
++                         StackFrameMIPS::CONTEXT_VALID_RA);
++
++    // By default, context frames provide all registers, as normal.
++    context_frame_validity = StackFrameMIPS::CONTEXT_VALID_ALL;
++
++    // By default, registers are unchanged.
++    raw_context = expected;
++  }
++
++  // Walk the stack, using stack_section as the contents of the stack
++  // and raw_context as the current register values. (Set the stack
++  // pointer to the stack's starting address.) Expect two stack
++  // frames; in the older frame, expect the callee-saves registers to
++  // have values matching those in 'expected'.
++  void CheckWalk() {
++    RegionFromSection();
++    raw_context.iregs[MD_CONTEXT_MIPS_REG_SP] = stack_section.start().Value();
++
++    StackFrameSymbolizer frame_symbolizer(&supplier, &resolver);
++    StackwalkerMIPS walker(&system_info, &raw_context, &stack_region,
++                           &modules, &frame_symbolizer);
++    vector<const CodeModule*> modules_without_symbols;
++    vector<const CodeModule*> modules_with_corrupt_symbols;
++    ASSERT_TRUE(walker.Walk(&call_stack, &modules_without_symbols,
++                            &modules_with_corrupt_symbols));
++    ASSERT_EQ(0U, modules_without_symbols.size());
++    ASSERT_EQ(0U, modules_with_corrupt_symbols.size());
++    frames = call_stack.frames();
++    ASSERT_EQ(2U, frames->size());
++
++    StackFrameMIPS* frame0 = static_cast<StackFrameMIPS*>(frames->at(0));
++    EXPECT_EQ(StackFrame::FRAME_TRUST_CONTEXT, frame0->trust);
++    ASSERT_EQ(StackFrameMIPS::CONTEXT_VALID_ALL, frame0->context_validity);
++    EXPECT_EQ("enchiridion", frame0->function_name);
++    EXPECT_EQ(0x00404000U, frame0->function_base);
++
++    StackFrameMIPS* frame1 = static_cast<StackFrameMIPS*>(frames->at(1));
++    EXPECT_EQ(StackFrame::FRAME_TRUST_CFI, frame1->trust);
++    ASSERT_EQ(expected_validity, frame1->context_validity);
++    EXPECT_EQ(expected.iregs[MD_CONTEXT_MIPS_REG_S0],
++              frame1->context.iregs[MD_CONTEXT_MIPS_REG_S0]);
++    EXPECT_EQ(expected.iregs[MD_CONTEXT_MIPS_REG_S1],
++              frame1->context.iregs[MD_CONTEXT_MIPS_REG_S1]);
++    EXPECT_EQ(expected.iregs[MD_CONTEXT_MIPS_REG_S2],
++              frame1->context.iregs[MD_CONTEXT_MIPS_REG_S2]);
++    EXPECT_EQ(expected.iregs[MD_CONTEXT_MIPS_REG_S3],
++              frame1->context.iregs[MD_CONTEXT_MIPS_REG_S3]);
++    EXPECT_EQ(expected.iregs[MD_CONTEXT_MIPS_REG_S4],
++              frame1->context.iregs[MD_CONTEXT_MIPS_REG_S4]);
++    EXPECT_EQ(expected.iregs[MD_CONTEXT_MIPS_REG_S5],
++              frame1->context.iregs[MD_CONTEXT_MIPS_REG_S5]);
++    EXPECT_EQ(expected.iregs[MD_CONTEXT_MIPS_REG_S6],
++              frame1->context.iregs[MD_CONTEXT_MIPS_REG_S6]);
++    EXPECT_EQ(expected.iregs[MD_CONTEXT_MIPS_REG_S7],
++              frame1->context.iregs[MD_CONTEXT_MIPS_REG_S7]);
++    EXPECT_EQ(expected.iregs[MD_CONTEXT_MIPS_REG_FP],
++              frame1->context.iregs[MD_CONTEXT_MIPS_REG_FP]);
++    EXPECT_EQ(expected.iregs[MD_CONTEXT_MIPS_REG_RA],
++              frame1->context.iregs[MD_CONTEXT_MIPS_REG_RA]);
++    EXPECT_EQ(expected.iregs[MD_CONTEXT_MIPS_REG_SP],
++              frame1->context.iregs[MD_CONTEXT_MIPS_REG_SP]);
++    EXPECT_EQ(expected.epc, frame1->context.epc);
++    EXPECT_EQ(expected.epc, frame1->instruction);
++    EXPECT_EQ("epictetus", frame1->function_name);
++    EXPECT_EQ(0x00405000U, frame1->function_base);    
++  }
++
++  // The values we expect to find for the caller's registers.
++  MDRawContextMIPS expected;
++
++  // The validity mask for expected.
++  int expected_validity;
++
++  // The validity mask to impose on the context frame.
++  int context_frame_validity;
++};
++
++class CFI: public CFIFixture, public Test { };
++
++// TODO(gordanac): add CFI tests
++
++TEST_F(CFI, At4004) {
++  Label frame1_sp = expected.iregs[MD_CONTEXT_MIPS_REG_SP];
++  stack_section
++    // frame0
++    .Append(24, 0)               // space
++    .D32(frame1_sp)              // stack pointer
++    .D32(0x00405510)             // return address
++    .Mark(&frame1_sp);           // This effectively sets stack_section.start().
++  raw_context.epc = 0x00404004;
++  CheckWalk();
++}
++
++// Check that we reject rules that would cause the stack pointer to
++// move in the wrong direction.
++TEST_F(CFI, RejectBackwards) {
++  raw_context.epc = 0x40005000;
++  raw_context.iregs[MD_CONTEXT_MIPS_REG_SP] = 0x80000000;
++  raw_context.iregs[MD_CONTEXT_MIPS_REG_RA] = 0x00405510;
++  
++  StackFrameSymbolizer frame_symbolizer(&supplier, &resolver);
++  StackwalkerMIPS walker(&system_info, &raw_context, &stack_region, &modules,
++                         &frame_symbolizer);
++  vector<const CodeModule*> modules_without_symbols;
++  vector<const CodeModule*> modules_with_corrupt_symbols;
++  ASSERT_TRUE(walker.Walk(&call_stack, &modules_without_symbols,
++                          &modules_with_corrupt_symbols));
++  ASSERT_EQ(0U, modules_without_symbols.size());
++  ASSERT_EQ(0U, modules_with_corrupt_symbols.size());
++  frames = call_stack.frames();
++  ASSERT_EQ(1U, frames->size());
++}
++
++// Check that we reject rules whose expressions' evaluation fails.
++TEST_F(CFI, RejectBadExpressions) {
++  raw_context.epc = 0x00407000;
++  raw_context.iregs[MD_CONTEXT_MIPS_REG_SP] = 0x80000000;
++  raw_context.iregs[MD_CONTEXT_MIPS_REG_RA] = 0x00405510;
++  
++  StackFrameSymbolizer frame_symbolizer(&supplier, &resolver);
++  StackwalkerMIPS walker(&system_info, &raw_context, &stack_region, &modules,
++                         &frame_symbolizer);
++  vector<const CodeModule*> modules_without_symbols;
++  vector<const CodeModule*> modules_with_corrupt_symbols;
++  ASSERT_TRUE(walker.Walk(&call_stack, &modules_without_symbols,
++                          &modules_with_corrupt_symbols));
++  ASSERT_EQ(0U, modules_without_symbols.size());
++  ASSERT_EQ(0U, modules_with_corrupt_symbols.size());
++  frames = call_stack.frames();
++  ASSERT_EQ(1U, frames->size());
++}
+diff --git a/toolkit/crashreporter/google-breakpad/src/processor/synth_minidump.cc b/toolkit/crashreporter/google-breakpad/src/processor/synth_minidump.cc
+index 377368a..41efea5 100644
+--- a/toolkit/crashreporter/google-breakpad/src/processor/synth_minidump.cc
++++ b/toolkit/crashreporter/google-breakpad/src/processor/synth_minidump.cc
+@@ -192,6 +192,41 @@ Context::Context(const Dump &dump, const MDRawContextARM &context)
+   assert(Size() == sizeof(MDRawContextARM));
+ }
+ 
++Context::Context(const Dump &dump, const MDRawContextMIPS &context) : Section(dump) {
++  // The caller should have properly set the CPU type flag.
++  assert(context.context_flags & MD_CONTEXT_MIPS);
++  D32(context.context_flags);
++  D32(context._pad0);
++
++  for (int i = 0; i < MD_CONTEXT_MIPS_GPR_COUNT; ++i)
++    D64(context.iregs[i]);
++
++  D64(context.mdhi);
++  D64(context.mdlo);
++
++  for (int i = 0; i < MD_CONTEXT_MIPS_DSP_COUNT; ++i)
++    D32(context.hi[i]);
++
++  for (int i = 0; i < MD_CONTEXT_MIPS_DSP_COUNT; ++i)
++    D32(context.lo[i]);
++
++  D32(context.dsp_control);
++  D32(context._pad1);
++
++  D64(context.epc);
++  D64(context.badvaddr);
++  D32(context.status);
++  D32(context.cause);
++
++  for (int i = 0; i < MD_FLOATINGSAVEAREA_MIPS_FPR_COUNT; ++i)
++    D64(context.float_save.regs[i]);
++
++  D32(context.float_save.fpcsr);
++  D32(context.float_save.fir);
++
++  assert(Size() == sizeof(MDRawContextMIPS));
++}
++
+ Thread::Thread(const Dump &dump,
+                uint32_t thread_id, const Memory &stack, const Context &context,
+                uint32_t suspend_count, uint32_t priority_class,
+diff --git a/toolkit/crashreporter/google-breakpad/src/processor/synth_minidump.h b/toolkit/crashreporter/google-breakpad/src/processor/synth_minidump.h
+index fbc1e29..8dac878 100644
+--- a/toolkit/crashreporter/google-breakpad/src/processor/synth_minidump.h
++++ b/toolkit/crashreporter/google-breakpad/src/processor/synth_minidump.h
+@@ -228,6 +228,7 @@ class Context: public Section {
+   // Create a context belonging to DUMP whose contents are a copy of CONTEXT.
+   Context(const Dump &dump, const MDRawContextX86 &context);
+   Context(const Dump &dump, const MDRawContextARM &context);
++  Context(const Dump &dump, const MDRawContextMIPS &context);
+   // Add an empty context to the dump.
+   Context(const Dump &dump) : Section(dump) {}
+   // Add constructors for other architectures here. Remember to byteswap.
+diff --git a/toolkit/crashreporter/google-breakpad/src/third_party/lss/linux_syscall_support.h b/toolkit/crashreporter/google-breakpad/src/third_party/lss/linux_syscall_support.h
+index 1827749..391226a 100644
+--- a/toolkit/crashreporter/google-breakpad/src/third_party/lss/linux_syscall_support.h
++++ b/toolkit/crashreporter/google-breakpad/src/third_party/lss/linux_syscall_support.h
+@@ -3472,9 +3472,9 @@ struct kernel_statfs {
+     #define __NR__pread64   __NR_pread64
+     #define __NR__pwrite64  __NR_pwrite64
+     #define __NR__readahead __NR_readahead
+-    #if defined(__ARM_EABI__)
+-      /* On ARM, a 64-bit parameter has to be in an even-odd register pair.
+-       * Hence these calls ignore their fourth argument (r3) so that their
++    #if defined(__ARM_EABI__) || defined(__mips__)
++      /* On ARM and MIPS, a 64-bit parameter has to be in an even-odd register
++       * pair. Hence these calls ignore their fourth argument (r3) so that their
+        * fifth and sixth make such a pair (r4,r5).
+        */
+       #define LSS_LLARG_PAD 0,
+diff --git a/toolkit/crashreporter/google-breakpad/src/tools/linux/md2core/minidump-2-core.cc b/toolkit/crashreporter/google-breakpad/src/tools/linux/md2core/minidump-2-core.cc
+index 93c46aa..310c9c4 100644
+--- a/toolkit/crashreporter/google-breakpad/src/tools/linux/md2core/minidump-2-core.cc
++++ b/toolkit/crashreporter/google-breakpad/src/tools/linux/md2core/minidump-2-core.cc
+@@ -202,7 +202,7 @@ struct CrashedProcess {
+   struct Thread {
+     pid_t tid;
+     user_regs_struct regs;
+-#if defined(__i386__) || defined(__x86_64__)
++#if defined(__i386__) || defined(__x86_64__) || defined(__mips__)
+     user_fpregs_struct fpregs;
+ #endif
+ #if defined(__i386__)
+@@ -357,6 +357,28 @@ ParseThreadRegisters(CrashedProcess::Thread* thread,
+   thread->regs.uregs[16] = rawregs->cpsr;
+   thread->regs.uregs[17] = 0;  // what is ORIG_r0 exactly?
+ }
++#elif defined(__mips__)
++static void
++ParseThreadRegisters(CrashedProcess::Thread* thread,
++                     const MinidumpMemoryRange& range) {
++  const MDRawContextMIPS* rawregs = range.GetData<MDRawContextMIPS>(0);
++
++  for (int i = 0; i < MD_CONTEXT_MIPS_GPR_COUNT; ++i)
++    thread->regs.regs[i] = rawregs->iregs[i];
++  
++  thread->regs.lo = rawregs->mdlo;
++  thread->regs.hi = rawregs->mdhi;
++  thread->regs.epc = rawregs->epc;
++  thread->regs.badvaddr = rawregs->badvaddr;
++  thread->regs.status = rawregs->status;
++  thread->regs.cause = rawregs->cause;
++
++  for (int i = 0; i < MD_FLOATINGSAVEAREA_MIPS_FPR_COUNT; ++i)
++    thread->fpregs.regs[i] = rawregs->float_save.regs[i];
++  
++  thread->fpregs.fpcsr = rawregs->float_save.fpcsr;
++  thread->fpregs.fir = rawregs->float_save.fir;
++}
+ #else
+ #error "This code has not been ported to your platform yet"
+ #endif
+@@ -421,6 +443,12 @@ ParseSystemInfo(CrashedProcess* crashinfo, const MinidumpMemoryRange& range,
+             "This version of minidump-2-core only supports ARM (32bit).\n");
+     _exit(1);
+   }
++#elif defined(__mips__)
++  if (sysinfo->processor_architecture != MD_CPU_ARCHITECTURE_MIPS) {
++    fprintf(stderr,
++            "This version of minidump-2-core only supports mips (32bit).\n");
++    _exit(1);
++  }
+ #else
+ #error "This code has not been ported to your platform yet"
+ #endif
+@@ -444,6 +472,8 @@ ParseSystemInfo(CrashedProcess* crashinfo, const MinidumpMemoryRange& range,
+             ? "x86-64"
+             : sysinfo->processor_architecture == MD_CPU_ARCHITECTURE_ARM
+             ? "ARM"
++            : sysinfo->processor_architecture == MD_CPU_ARCHITECTURE_MIPS
++            ? "MIPS"
+             : "???",
+             sysinfo->number_of_processors,
+             sysinfo->processor_level,
+-- 
+2.2.2
+

@@ -1,0 +1,25 @@
+From 75c2ae972b42470c5dd2c5af933a2f348944d442 Mon Sep 17 00:00:00 2001
+From: Nikola Veljkovic <nikola.veljkovic@imgtec.com>
+Date: Tue, 27 Jan 2015 11:16:36 +0100
+Subject: [PATCH] [MIPS] Increased number of frame buffers.
+
+---
+ widget/gonk/libdisplay/FramebufferSurface.cpp |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/widget/gonk/libdisplay/FramebufferSurface.cpp b/widget/gonk/libdisplay/FramebufferSurface.cpp
+index 219e9be..722315a 100644
+--- a/widget/gonk/libdisplay/FramebufferSurface.cpp
++++ b/widget/gonk/libdisplay/FramebufferSurface.cpp
+@@ -38,7 +38,7 @@
+ #include "GraphicBufferAlloc.h"
+ 
+ #ifndef NUM_FRAMEBUFFER_SURFACE_BUFFERS
+-#define NUM_FRAMEBUFFER_SURFACE_BUFFERS (2)
++#define NUM_FRAMEBUFFER_SURFACE_BUFFERS (3)
+ #endif
+ 
+ // ----------------------------------------------------------------------------
+-- 
+1.7.9.5
+

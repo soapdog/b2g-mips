@@ -1,0 +1,32 @@
+From 9d5985a0f4aabb451e7b4ee837d960843c9dc886 Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <milan.jelisavcic@imgtec.com>
+Date: Tue, 27 Jan 2015 10:27:27 +0100
+Subject: [PATCH] [MIPS] Fix bluetooth build configuration.
+
+---
+ dom/system/gonk/moz.build |    9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/dom/system/gonk/moz.build b/dom/system/gonk/moz.build
+index 159cfa3..14278b6 100644
+--- a/dom/system/gonk/moz.build
++++ b/dom/system/gonk/moz.build
+@@ -102,6 +102,15 @@ if CONFIG['MOZ_NFC']:
+     'nfc_worker.js',
+     ]
+ 
++if CONFIG['MOZ_B2G_RIL']:
++    LOCAL_INCLUDES += [
++        '/dom/bluetooth/bluedroid/hfp',
++    ]
++else:
++    LOCAL_INCLUDES += [
++       '/dom/bluetooth/bluedroid/hfp-fallback',
++    ]
++
+ FAIL_ON_WARNINGS = True
+ 
+ include('/ipc/chromium/chromium-config.mozbuild')
+-- 
+1.7.9.5
+

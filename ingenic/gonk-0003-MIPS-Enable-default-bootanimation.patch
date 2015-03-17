@@ -1,0 +1,24 @@
+From 8e864f535ab3bc07b0c7a436e5b45ee87a42d62f Mon Sep 17 00:00:00 2001
+From: Nikola Veljkovic <nikola.veljkovic@imgtec.com>
+Date: Tue, 27 Jan 2015 11:20:24 +0100
+Subject: [PATCH] [MIPS] Enable default bootanimation.
+
+---
+ b2g.mk |    1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/b2g.mk b/b2g.mk
+index 784ee7e..a2265cd 100644
+--- a/b2g.mk
++++ b/b2g.mk
+@@ -1,6 +1,7 @@
+ TARGET_PROVIDES_INIT_RC := true
+ CONFIG_ESD := no
+ HTTP := android
++ENABLE_DEFAULT_BOOTANIMATION := true
+ 
+ PRODUCT_PACKAGES += \
+ 	b2g.sh \
+-- 
+1.7.9.5
+

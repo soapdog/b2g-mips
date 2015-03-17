@@ -1,0 +1,27 @@
+From 7242de7a8ad8f12c8180aa39c69253cde4edad46 Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <milan.jelisavcic@imgtec.com>
+Date: Wed, 28 Jan 2015 13:11:04 +0100
+Subject: [PATCH] [MIPS] Remove lockYCbCr call it lacks proper implementation
+ in libcamera for Ingenic tablet.
+
+---
+ gfx/layers/GrallocImages.cpp |    3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/gfx/layers/GrallocImages.cpp b/gfx/layers/GrallocImages.cpp
+index 9148689..4b4dad3 100644
+--- a/gfx/layers/GrallocImages.cpp
++++ b/gfx/layers/GrallocImages.cpp
+@@ -217,9 +217,6 @@ ConvertVendorYUVFormatToRGB565(android::sp<GraphicBuffer>& aBuffer,
+ #if ANDROID_VERSION >= 18
+   android_ycbcr ycbcr;
+ 
+-  // Check if the vendor provides explicit addresses of Y/Cb/Cr buffer from lockYCbCr
+-  rv = aBuffer->lockYCbCr(android::GraphicBuffer::USAGE_SW_READ_OFTEN, &ycbcr);
+-
+   if (rv != OK) {
+     NS_WARNING("Couldn't lock graphic buffer using lockYCbCr()");
+     return rv;
+-- 
+1.7.9.5
+

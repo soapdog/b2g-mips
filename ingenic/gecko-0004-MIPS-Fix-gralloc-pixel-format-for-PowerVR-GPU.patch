@@ -1,0 +1,51 @@
+From 6018837d205fc5634de64120b3e448a512fd837b Mon Sep 17 00:00:00 2001
+From: Nikola Veljkovic <nikola.veljkovic@imgtec.com>
+Date: Tue, 27 Jan 2015 10:46:34 +0100
+Subject: [PATCH] [MIPS] Fix gralloc pixel format for PowerVR GPU.
+
+---
+ gfx/layers/ipc/ShadowLayerUtilsGralloc.cpp |    6 ++++--
+ gfx/layers/opengl/GrallocTextureHost.cpp   |    2 +-
+ 2 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/gfx/layers/ipc/ShadowLayerUtilsGralloc.cpp b/gfx/layers/ipc/ShadowLayerUtilsGralloc.cpp
+index f2fdbd3c..05c7753 100644
+--- a/gfx/layers/ipc/ShadowLayerUtilsGralloc.cpp
++++ b/gfx/layers/ipc/ShadowLayerUtilsGralloc.cpp
+@@ -195,6 +195,8 @@ static gfxImageFormat
+ ImageFormatForPixelFormat(android::PixelFormat aFormat)
+ {
+   switch (aFormat) {
++  case PIXEL_FORMAT_BGRA_8888:
++    return gfxImageFormat::ARGB32;
+   case PIXEL_FORMAT_RGBA_8888:
+     return gfxImageFormat::ARGB32;
+   case PIXEL_FORMAT_RGBX_8888:
+@@ -212,9 +214,9 @@ PixelFormatForImageFormat(gfxImageFormat aFormat)
+ {
+   switch (aFormat) {
+   case gfxImageFormat::ARGB32:
+-    return android::PIXEL_FORMAT_RGBA_8888;
++    return android::PIXEL_FORMAT_BGRA_8888;
+   case gfxImageFormat::RGB24:
+-    return android::PIXEL_FORMAT_RGBX_8888;
++    return android::PIXEL_FORMAT_BGRA_8888;
+   case gfxImageFormat::RGB16_565:
+     return android::PIXEL_FORMAT_RGB_565;
+   case gfxImageFormat::A8:
+diff --git a/gfx/layers/opengl/GrallocTextureHost.cpp b/gfx/layers/opengl/GrallocTextureHost.cpp
+index 73ac05c..1ecfc54 100644
+--- a/gfx/layers/opengl/GrallocTextureHost.cpp
++++ b/gfx/layers/opengl/GrallocTextureHost.cpp
+@@ -72,7 +72,7 @@ TextureTargetForAndroidPixelFormat(android::PixelFormat aFormat)
+   case android::PIXEL_FORMAT_RGBA_8888:
+   case android::PIXEL_FORMAT_RGBX_8888:
+   case android::PIXEL_FORMAT_RGB_565:
+-    return LOCAL_GL_TEXTURE_2D;
++    return LOCAL_GL_TEXTURE_EXTERNAL;
+   default:
+     if (aFormat >= 0x100 && aFormat <= 0x1FF) {
+       // Reserved range for HAL specific formats.
+-- 
+1.7.9.5
+

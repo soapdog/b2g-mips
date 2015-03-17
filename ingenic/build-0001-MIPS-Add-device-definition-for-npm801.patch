@@ -1,0 +1,36 @@
+From 567d189f4c3b2b5358eff2683f8c4f767cb7d2e7 Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <milan.jelisavcic@imgtec.com>
+Date: Tue, 27 Jan 2015 20:28:26 +0100
+Subject: [PATCH] [MIPS] Add device definition for npm801.
+
+---
+ core/combo/arch/mips/mips32r2-fp-xburst.mk | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+ create mode 100644 core/combo/arch/mips/mips32r2-fp-xburst.mk
+
+diff --git a/core/combo/arch/mips/mips32r2-fp-xburst.mk b/core/combo/arch/mips/mips32r2-fp-xburst.mk
+new file mode 100644
+index 0000000..8b0fef1
+--- /dev/null
++++ b/core/combo/arch/mips/mips32r2-fp-xburst.mk
+@@ -0,0 +1,17 @@
++# Configuration for Android on Ingenic xb4780/Xburst MIPS CPU.
++# Generating binaries for MIPS32R2/hard-float/little-endian without
++# support for the Madd family of instructions.
++
++ARCH_MIPS_HAS_FPU :=true
++ARCH_HAVE_ALIGNED_DOUBLES :=true
++arch_variant_cflags := \
++    -EL \
++    -march=mips32r2 \
++    -mtune=mips32r2 \
++    -mips32r2 \
++    -mhard-float \
++    -mno-fused-madd \
++    -Wa,-mmxu
++
++arch_variant_ldflags := \
++    -EL
+-- 
+2.2.2
+

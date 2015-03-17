@@ -1,0 +1,37 @@
+From 2cb4f34cd8a9056d27d63bc97691e209a67265a5 Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <Milan.Jelisavcic@imgtec.com>
+Date: Mon, 26 Jan 2015 14:35:20 +0100
+Subject: [PATCH] [MIPS] Add mips emulator to config.sh.
+
+---
+ config.sh | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/config.sh b/config.sh
+index 390402d..34c7f2c 100755
+--- a/config.sh
++++ b/config.sh
+@@ -168,6 +168,12 @@ case "$1" in
+ 	repo_sync $1
+ 	;;
+ 
++"emulator-mips-jb")
++	echo DEVICE=generic_mips >> .tmp-config &&
++	echo LUNCH=aosp_mips-eng >> .tmp-config &&
++	repo_sync $1
++	;;
++
+ "emulator-x86"|"emulator-x86-jb"|"emulator-x86-kk")
+ 	echo DEVICE=generic_x86 >> .tmp-config &&
+ 	echo LUNCH=full_x86-eng >> .tmp-config &&
+@@ -215,6 +221,7 @@ case "$1" in
+ 	echo - emulator-kk
+ 	echo - emulator-x86
+ 	echo - emulator-x86-jb
++	echo - emulator-mips-jb
+ 	echo - emulator-x86-kk
+ 	exit -1
+ 	;;
+-- 
+2.2.2
+

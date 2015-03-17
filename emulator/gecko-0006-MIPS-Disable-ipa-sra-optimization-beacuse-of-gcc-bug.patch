@@ -1,0 +1,28 @@
+From 152e8ae0a3f584310cf7c1fba7074bdcc4e6c9c4 Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <Milan.Jelisavcic@imgtec.com>
+Date: Mon, 26 Jan 2015 16:43:06 +0100
+Subject: [PATCH] [MIPS] Disable ipa-sra optimization beacuse of gcc bug.
+
+---
+ layout/ipc/moz.build | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/layout/ipc/moz.build b/layout/ipc/moz.build
+index f727e3c..4c76941 100644
+--- a/layout/ipc/moz.build
++++ b/layout/ipc/moz.build
+@@ -32,4 +32,9 @@ LOCAL_INCLUDES += [
+     '/layout/xul',
+ ]
+ 
+-JAR_MANIFESTS += ['jar.mn']
+\ No newline at end of file
++if CONFIG['CPU_ARCH'] == 'mips':
++    CXXFLAGS += [
++        '-fno-ipa-sra',
++    ]
++
++JAR_MANIFESTS += ['jar.mn']
+-- 
+2.2.2
+

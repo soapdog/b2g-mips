@@ -1,0 +1,970 @@
+From 19019968bf37f9bcddf073d92bda9057333d0c30 Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <milan.jelisavcic@imgtec.com>
+Date: Tue, 27 Jan 2015 20:12:24 +0100
+Subject: [PATCH] [MIPS] Workaround adapting libcamera to FirefoxOS.
+
+---
+ libcamera2/Android.mk                 |  137 ++++++++++++++++++
+ libcamera2/Android.mk.nocompile       |  139 ------------------
+ libcamera2/CameraHal1.cpp             |  190 +-----------------------
+ libcamera2/YuvToJpegEncoder.cpp       |  256 +++++++++++++++++++++++++++++++++
+ libcamera2/binary/camera.mk           |    4 +-
+ libcamera2/include/CameraCompressor.h |    2 +-
+ libcamera2/include/CameraHal1.h       |    3 -
+ libcamera2/include/CameraHal2.h       |    1 -
+ libcamera2/include/YuvToJpegEncoder.h |   74 ++++++++++
+ 9 files changed, 473 insertions(+), 333 deletions(-)
+ create mode 100644 libcamera2/Android.mk
+ delete mode 100644 libcamera2/Android.mk.nocompile
+ create mode 100644 libcamera2/YuvToJpegEncoder.cpp
+ create mode 100644 libcamera2/include/YuvToJpegEncoder.h
+
+diff --git a/libcamera2/Android.mk b/libcamera2/Android.mk
+new file mode 100644
+index 0000000..500c7c0
+--- /dev/null
++++ b/libcamera2/Android.mk
+@@ -0,0 +1,137 @@
++ifeq ($(BOARD_HAS_CAMERA), true)
++
++LOCAL_PATH:= $(call my-dir)
++
++include $(CLEAR_VARS)
++
++LOCAL_SRC_FILES:= \
++	SensorListener.cpp \
++	CameraCIMDevice.cpp \
++	CameraV4L2Device.cpp \
++	CameraCompressor.cpp \
++	CameraColorConvert.cpp \
++	CameraHalSelector.cpp \
++	CameraHWModule.cpp \
++	YuvToJpegEncoder.cpp
++
++LOCAL_C_INCLUDES += \
++	$(LOCAL_PATH)/include \
++	external/jpeg \
++	external/jhead \
++	external/skia/include/core/ \
++	external/skia/include/images \
++	external/neven/FaceRecEm/common/src/b_FDSDK \
++	frameworks/native/include \
++	frameworks/native/include/media/hardware \
++	frameworks/av/include \
++	frameworks/av/services/camera/libcameraservice \
++	frameworks/av/media/libstagefright \
++	frameworks/base/core/jni/android/graphics \
++	frameworks/native/include/media/openmax \
++    hardware/libhardware/include \
++	hardware/ingenic/xb4780/libdmmu \
++	hardware/ingenic/xb4780/libjzipu \
++	hardware/ingenic/xb4780/hwcomposer-SGX540 \
++	hardware/ingenic/xb4780/include/media \
++	kernel/drivers/video
++
++include external/stlport/libstlport.mk
++
++LOCAL_SHARED_LIBRARIES:= \
++	libui \
++	libgui \
++	libskia \
++	libbinder \
++	libcutils \
++	libutils \
++	libjpeg \
++	libexif \
++	liblog \
++	libcamera_client \
++	libstlport \
++	libmedia \
++	libdmmu \
++	libdl \
++	libjzipu \
++
++LOCAL_CFLAGS += \
++	-DCIM_CAMERA \
++	-DCAMERA_INFO_MODULE=\"$(PRODUCT_MODEL)\" \
++	-DCAMERA_INFO_MANUFACTURER=\"$(PRODUCT_MANUFACTURER)\"
++
++#camera version config
++ifeq ($(CAMERA_VERSION), 1)
++LOCAL_SRC_FILES += \
++	CameraHal1.cpp \
++	JZCameraParameters.cpp \
++
++LOCAL_CFLAGS += \
++	-DCAMERA_VERSION1 \
++	-DSOFTWARE_VALUE=\"Android4.1\"
++endif
++
++ifeq ($(CAMERA_VERSION), 2)
++LOCAL_SRC_FILES += \
++	CameraHal2.cpp \
++	JZCameraParameters2.cpp
++LOCAL_C_INCLUDES += \
++	system/media/camera/include
++
++LOCAL_SHARED_LIBRARIES += \
++	libcamera_metadata \
++	libcameraservice
++
++LOCAL_CFLAGS += \
++	-DCAMERA_VERSION2 \
++	-DSOFTWARE_VALUE=\"Android4.2\"
++endif
++
++#camera face detect config
++ifeq ($(FRONT_CAMERA_FACEDETECT),true)
++LOCAL_CFLAGS += \
++	-DCAMERA_FACEDETECT=\"3\"
++else
++LOCAL_CFLAGS += \
++	-DCAMERA_FACEDETECT=\"0\"
++endif
++
++ifeq ($(BACK_CAMERA_FACEDETECT),true)
++LOCAL_CFLAGS += \
++	-DCAMERA_FACEDETECT=\"3\"
++else
++LOCAL_CFLAGS += \
++	-DCAMERA_FACEDETECT=\"0\"
++endif
++
++# camera video snap short config
++ifeq ($(CAMERA_SUPPORT_VIDEOSNAPSHORT), true)
++LOCAL_CFLAGS += \
++	-DCAMERA_SUPPORT_VIDEOSNAPSHORT
++#	-DCOMPRESS_JPEG_USE_HW
++
++LOCAL_SHARED_LIBRARIES += \
++	libstagefright_vlume
++
++LOCAL_SRC_FILES += \
++	CameraCompressorHW.cpp
++endif
++
++#config covert yuv to rgb
++ifeq ($(COVERT_WITH_SOFT), true)
++LOCAL_CFLAGS += \
++	-DSOFT_CONVERT
++endif
++
++#camera recording use memcpy config
++ifeq ($(CAMERA_COPY_MODE_RECORDING), true)
++LOCAL_CFLAGS += \
++	-DCOPY_RECORDING_MODE
++endif
++
++LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
++
++LOCAL_MODULE:= camera.xb4780
++LOCAL_MODULE_TAGS := optional
++
++include $(BUILD_SHARED_LIBRARY)
++endif
+diff --git a/libcamera2/Android.mk.nocompile b/libcamera2/Android.mk.nocompile
+deleted file mode 100644
+index a97bbc3..0000000
+--- a/libcamera2/Android.mk.nocompile
++++ /dev/null
+@@ -1,139 +0,0 @@
+-ifeq ($(BOARD_HAS_CAMERA), true)
+-
+-LOCAL_PATH:= $(call my-dir)
+-
+-include $(CLEAR_VARS)
+-
+-LOCAL_SRC_FILES:= \
+-	SensorListener.cpp \
+-	CameraCIMDevice.cpp \
+-	CameraV4L2Device.cpp \
+-	CameraCompressor.cpp \
+-	CameraColorConvert.cpp \
+-	CameraFaceDetect.cpp \
+-	CameraHalSelector.cpp \
+-	CameraHWModule.cpp
+-
+-LOCAL_C_INCLUDES += \
+-	$(LOCAL_PATH)/include \
+-	external/jpeg \
+-	external/jhead \
+-	external/skia/include/core/ \
+-	external/skia/include/images \
+-	external/neven/FaceRecEm/common/src/b_FDSDK \
+-	frameworks/native/include \
+-	frameworks/native/include/media/hardware \
+-	frameworks/av/include \
+-	frameworks/av/services/camera/libcameraservice \
+-	frameworks/av/media/libstagefright \
+-	frameworks/base/core/jni/android/graphics \
+-	frameworks/native/include/media/openmax \
+-    hardware/libhardware/include \
+-	hardware/ingenic/xb4780/libdmmu \
+-	hardware/ingenic/xb4780/libjzipu \
+-	hardware/ingenic/xb4780/hwcomposer-SGX540 \
+-	hardware/ingenic/xb4780/include/media \
+-	kernel/drivers/video
+-
+-include external/stlport/libstlport.mk
+-
+-LOCAL_SHARED_LIBRARIES:= \
+-	libui \
+-	libgui \
+-	libskia \
+-	libandroid_runtime \
+-	libbinder \
+-	libcutils \
+-	libutils \
+-	libjpeg \
+-	libexif \
+-	liblog \
+-	libcamera_client \
+-	libstlport \
+-	libmedia \
+-	libFFTEm \
+-	libdmmu \
+-	libdl \
+-	libjzipu \
+-
+-LOCAL_CFLAGS += \
+-	-DCIM_CAMERA \
+-	-DCAMERA_INFO_MODULE=\"$(PRODUCT_MODEL)\" \
+-	-DCAMERA_INFO_MANUFACTURER=\"$(PRODUCT_MANUFACTURER)\"
+-
+-#camera version config
+-ifeq ($(CAMERA_VERSION), 1)
+-LOCAL_SRC_FILES += \
+-	CameraHal1.cpp \
+-	JZCameraParameters.cpp \
+-
+-LOCAL_CFLAGS += \
+-	-DCAMERA_VERSION1 \
+-	-DSOFTWARE_VALUE=\"Android4.1\"
+-endif
+-
+-ifeq ($(CAMERA_VERSION), 2)
+-LOCAL_SRC_FILES += \
+-	CameraHal2.cpp \
+-	JZCameraParameters2.cpp
+-LOCAL_C_INCLUDES += \
+-	system/media/camera/include
+-
+-LOCAL_SHARED_LIBRARIES += \
+-	libcamera_metadata \
+-	libcameraservice
+-
+-LOCAL_CFLAGS += \
+-	-DCAMERA_VERSION2 \
+-	-DSOFTWARE_VALUE=\"Android4.2\"
+-endif
+-
+-#camera face detect config
+-ifeq ($(FRONT_CAMERA_FACEDETECT),true)
+-LOCAL_CFLAGS += \
+-	-DCAMERA_FACEDETECT=\"3\"
+-else
+-LOCAL_CFLAGS += \
+-	-DCAMERA_FACEDETECT=\"0\"
+-endif
+-
+-ifeq ($(BACK_CAMERA_FACEDETECT),true)
+-LOCAL_CFLAGS += \
+-	-DCAMERA_FACEDETECT=\"3\"
+-else
+-LOCAL_CFLAGS += \
+-	-DCAMERA_FACEDETECT=\"0\"
+-endif
+-
+-# camera video snap short config
+-ifeq ($(CAMERA_SUPPORT_VIDEOSNAPSHORT), true)
+-LOCAL_CFLAGS += \
+-	-DCAMERA_SUPPORT_VIDEOSNAPSHORT
+-#	-DCOMPRESS_JPEG_USE_HW
+-
+-LOCAL_SHARED_LIBRARIES += \
+-	libstagefright_vlume 
+-
+-LOCAL_SRC_FILES += \
+-	CameraCompressorHW.cpp
+-endif
+-
+-#config covert yuv to rgb
+-ifeq ($(COVERT_WITH_SOFT), true)
+-LOCAL_CFLAGS += \
+-	-DSOFT_CONVERT
+-endif
+-
+-#camera recording use memcpy config
+-ifeq ($(CAMERA_COPY_MODE_RECORDING), true)
+-LOCAL_CFLAGS += \
+-	-DCOPY_RECORDING_MODE
+-endif
+-
+-LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
+-
+-LOCAL_MODULE:= camera.xb4780
+-LOCAL_MODULE_TAGS := optional
+-
+-include $(BUILD_SHARED_LIBRARY)
+-endif
+diff --git a/libcamera2/CameraHal1.cpp b/libcamera2/CameraHal1.cpp
+index e3b2590..1bde6ab 100644
+--- a/libcamera2/CameraHal1.cpp
++++ b/libcamera2/CameraHal1.cpp
+@@ -15,7 +15,6 @@
+ #define LOST_FRAME_NUM 1
+ 
+ #include "CameraHalSelector.h"
+-#include "CameraFaceDetect.h"
+ 
+ #define ENCODE_BY_HARDWARE
+ 
+@@ -29,6 +28,8 @@
+ #endif
+ //#define CONVERTER_PMON
+ 
++#define MAX(x, y) (x)>(y) ? (x) : (y)
++
+ namespace android{
+ 
+     CameraHal1::CameraHal1(int id, CameraDeviceCommon* device)
+@@ -131,7 +132,6 @@ namespace android{
+         mFocusThread.clear();
+         mFocusThread = NULL;
+         mModuleOpened = false;
+-        delete CameraFaceDetect::getInstance();
+     }
+ 
+     void CameraHal1::update_device(CameraDeviceCommon* device) {
+@@ -201,16 +201,7 @@ namespace android{
+ 
+         mHal1SignalRecordingVideo = new Hal1SignalRecordingVideo(this);
+         mHal1SignalRecordingVideo->Start("RecordingThread",PRIORITY_DEFAULT, 0);
+-        //register for sensor events
+-        mSensorListener = new SensorListener();
+-        if (mSensorListener.get()) {
+-            if (mSensorListener->initialize() == NO_ERROR) {
+-                mSensorListener->enableSensor(SensorListener::SENSOR_ORIENTATION);
+-            } else {
+-                mSensorListener.clear();
+-                mSensorListener = NULL;
+-            }
+-        }
++
+         return ret;
+     }
+ 
+@@ -827,13 +818,7 @@ namespace android{
+                 }
+                 break;
+             case CAMERA_CMD_START_FACE_DETECTION:
+-                res = softFaceDetectStart(arg1);
+-                // res = mDevice->sendCommand(START_FACE_DETECT);
+-                break;
+             case CAMERA_CMD_STOP_FACE_DETECTION:
+-                res = softFaceDetectStop();
+-                //  res = mDevice->sendCommand(STOP_FACE_DETECT);
+-                break;
+             default:
+                 break;
+             }
+@@ -970,11 +955,6 @@ namespace android{
+             mHal1SignalRecordingVideo = NULL;
+         }
+ 
+-        if (mSensorListener.get()) {
+-            mSensorListener->disableSensor(SensorListener::SENSOR_ORIENTATION);
+-            mSensorListener.clear();
+-            mSensorListener = NULL;
+-        }
+         mDevice->disConnectDevice();
+ 
+         return NO_ERROR;
+@@ -1388,38 +1368,6 @@ namespace android{
+             goto preview_win_format_error;
+         }
+ 
+-        if (isSoftFaceDetectStart == true && ccc) {
+-            if (mPreviewWinFmt == HAL_PIXEL_FORMAT_RGB_565) {
+-                mFaceCount = CameraFaceDetect::getInstance()->detect((uint16_t*)dst);
+-            } else {
+-                camera_memory_t* rgb565 = mget_memory(-1, (srcWidth*srcHeight*2), 1, NULL);
+-                if ((rgb565 != NULL) && (rgb565->data != NULL)) {
+-                    if (mCurrentFrame->format == HAL_PIXEL_FORMAT_YCbCr_422_I) {
+-                        ccc->yuyv_to_rgb565(src, srcStride, (uint8_t*)(rgb565->data),
+-                                            mPreviewWinWidth*2, srcWidth, srcHeight);
+-                        mFaceCount = CameraFaceDetect::getInstance()->detect((uint16_t*)rgb565->data);
+-                    } else if (mCurrentFrame->format == HAL_PIXEL_FORMAT_JZ_YUV_420_B) {
+-#ifdef SOFT_CONVERT
+-                        ccc->tile420_to_rgb565(mCurrentFrame, (uint8_t*)(rgb565->data));
+-#else
+-#ifdef USE_X2D
+-                        x2d_convert_dataformat(mCurrentFrame, 
+-                                               (uint8_t*)(rgb565->data), buffer);
+-#else
+-                        if (ipu_open_status)
+-                            ipu_convert_dataformat(mCurrentFrame,(uint8_t*)(rgb565->data), buffer);
+-#endif
+-#endif
+-                        mFaceCount = CameraFaceDetect::getInstance()->detect((uint16_t*)rgb565->data);
+-                    } else if (mCurrentFrame->format == HAL_PIXEL_FORMAT_JZ_YUV_420_P) {
+-                        ccc->yuv420p_to_rgb565(src, (uint8_t*)(rgb565->data),srcWidth, srcHeight);
+-                        mFaceCount = CameraFaceDetect::getInstance()->detect((uint16_t*)rgb565->data);
+-                    }
+-                    rgb565->release(rgb565);
+-                    rgb565 = NULL;
+-                }
+-            }
+-        }
+     preview_win_format_error:
+         if (tmp_mem != NULL) {
+             tmp_mem->release(tmp_mem);
+@@ -1653,86 +1601,6 @@ namespace android{
+             }
+         }
+ 
+-        if ((mMesgEnabled & CAMERA_MSG_PREVIEW_METADATA) && (isSoftFaceDetectStart == true)) {
+-            Rect **faceRect = NULL;
+-            camera_frame_metadata_t frame_metadata;
+-            int maxFaces = mJzParameters->getCameraParameters()
+-                .getInt(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_HW);
+-            status_t ret = NO_ERROR;
+-            float lx = 0, ly = 0, rx = 0, ry = 0;
+-            float fl = 0, fr = 0, ft = 0, fb = 0;
+-
+-            if (mFaceCount > 0) {
+-                if (mFaceCount > maxFaces)
+-                    mFaceCount = maxFaces;
+-                faceRect = new Rect*[mFaceCount];
+-                frame_metadata.faces = (camera_face_t*)calloc(mFaceCount, sizeof(camera_face_t));
+-                frame_metadata.number_of_faces = mFaceCount;
+-                for (int i = 0; i < mFaceCount; ++i) {
+-                    faceRect[i] = new Rect();
+-                    CameraFaceDetect::getInstance()->get_face(faceRect[i],i);
+-                    fl = faceRect[i]->left;
+-                    fr = faceRect[i]->right;
+-                    ft = faceRect[i]->top;
+-                    fb = faceRect[i]->bottom;
+-
+-                    if (fl >= -1000 && fl <= 1000) {
+-                        ;
+-                    } else {
+-                        fl = fl - 1000;
+-                        fr = fr - 1000;
+-                        ft = ft - 1000;
+-                        fb = fb - 1000;
+-                    }
+-
+-                    frame_metadata.faces[i].rect[0] = (int32_t)fl;
+-                    frame_metadata.faces[i].rect[1] = (int32_t)fr;
+-                    frame_metadata.faces[i].rect[2] = (int32_t)ft;
+-                    frame_metadata.faces[i].rect[3] = (int32_t)fb;
+-
+-                    frame_metadata.faces[i].id = i;
+-                    frame_metadata.faces[i].score = CameraFaceDetect::getInstance()->get_confidence();
+-                    frame_metadata.faces[i].mouth[0] = -2000; frame_metadata.faces[i].mouth[1] = -2000;
+-                    lx = CameraFaceDetect::getInstance()->getLeftEyeX();
+-                    ly = CameraFaceDetect::getInstance()->getLeftEyeY();
+-                    rx = CameraFaceDetect::getInstance()->getRightEyeX();
+-                    ry = CameraFaceDetect::getInstance()->getRightEyeY();
+-                    if ((lx >= -1000 && lx <= 1000)) {
+-                        ;
+-                    } else {
+-                        lx = lx - 1000;
+-                        ly = ly - 1000;
+-                        rx = rx - 1000;
+-                        ry = ry - 1000;
+-                    }
+-                    frame_metadata.faces[i].left_eye[0] = (int32_t)lx;
+-                    frame_metadata.faces[i].left_eye[1] = (int32_t)ly;
+-                    frame_metadata.faces[i].right_eye[0] = (int32_t)rx;
+-                    frame_metadata.faces[i].right_eye[1] = (int32_t)ry;
+-                }
+-
+-                camera_memory_t *tmpBuffer = mget_memory(-1, 1, 1, NULL);
+-                mdata_cb(CAMERA_MSG_PREVIEW_METADATA, tmpBuffer, 0, &frame_metadata,mcamera_interface);
+-
+-                if ( NULL != tmpBuffer ) {
+-                    tmpBuffer->release(tmpBuffer);
+-                    tmpBuffer = NULL;
+-                }
+-
+-                for (int i = 0; i < mFaceCount; ++i) {
+-                    delete faceRect[i];
+-                    faceRect[i] = NULL;
+-                }
+-                delete [] faceRect;
+-                faceRect = NULL;
+-                   
+-                if (frame_metadata.faces != NULL) {
+-                    free(frame_metadata.faces);
+-                    frame_metadata.faces = NULL;
+-                }
+-            }
+-        }
+-
+         if (mTakingPicture) {
+ 
+             if (mJzParameters->is_picture_size_change()
+@@ -1996,58 +1864,6 @@ namespace android{
+         return ret;
+     }
+ 
+-
+-    status_t CameraHal1::softFaceDetectStart(int32_t detect_type) {
+-
+-        int w = mRawPreviewWidth;
+-        int h = mRawPreviewHeight;
+-        int maxFaces = 0;
+-        status_t res = NO_ERROR;
+-
+-        switch(detect_type)
+-            {
+-            case CAMERA_FACE_DETECTION_HW:
+-                ALOGE("start hardware face detect");
+-                maxFaces = mJzParameters->getCameraParameters()
+-                    .getInt(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_HW);
+-                goto hard_detect_method;
+-                break;
+-            case CAMERA_FACE_DETECTION_SW:
+-                ALOGE("start Software face detection");
+-                maxFaces = mJzParameters->getCameraParameters()
+-                    .getInt(CameraParameters::KEY_MAX_NUM_DETECTED_FACES_SW);
+-                goto soft_detect_method;
+-                break;
+-            }
+-
+-    hard_detect_method:
+-    soft_detect_method:
+-
+-        if (maxFaces == 0) {
+-            isSoftFaceDetectStart = false;
+-            return BAD_VALUE;
+-        }
+-
+-        ALOGV("%s: max Face = %d", __FUNCTION__,maxFaces);
+-
+-        res = CameraFaceDetect::getInstance()->initialize(w, h, maxFaces);
+-        if (res == NO_ERROR) {
+-            isSoftFaceDetectStart = true;
+-        } else {
+-            isSoftFaceDetectStart = false;
+-        }
+-
+-        return res;
+-    }
+-
+-    status_t CameraHal1::softFaceDetectStop(void) {
+-        if (isSoftFaceDetectStart) {
+-            isSoftFaceDetectStart = false;
+-            CameraFaceDetect::getInstance()->deInitialize();
+-        }
+-        return NO_ERROR;
+-    }
+-
+     void CameraHal1::x2d_convert_dataformat(CameraYUVMeta* yuvMeta, 
+                                             uint8_t* dst_buf, buffer_handle_t *buffer) {
+ 
+diff --git a/libcamera2/YuvToJpegEncoder.cpp b/libcamera2/YuvToJpegEncoder.cpp
+new file mode 100644
+index 0000000..8b981a3
+--- /dev/null
++++ b/libcamera2/YuvToJpegEncoder.cpp
+@@ -0,0 +1,256 @@
++#include "CreateJavaOutputStreamAdaptor.h"
++#include "SkJpegUtility.h"
++#include "YuvToJpegEncoder.h"
++#include <ui/PixelFormat.h>
++#include <hardware/hardware.h>
++
++#include <jni.h>
++
++YuvToJpegEncoder* YuvToJpegEncoder::create(int format, int* strides) {
++    // Only ImageFormat.NV21 and ImageFormat.YUY2 are supported
++    // for now.
++    if (format == HAL_PIXEL_FORMAT_YCrCb_420_SP) {
++        return new Yuv420SpToJpegEncoder(strides);
++    } else if (format == HAL_PIXEL_FORMAT_YCbCr_422_I) {
++        return new Yuv422IToJpegEncoder(strides);
++    } else {
++      return NULL;
++    }
++}
++
++YuvToJpegEncoder::YuvToJpegEncoder(int* strides) : fStrides(strides) {
++}
++
++bool YuvToJpegEncoder::encode(SkWStream* stream, void* inYuv, int width,
++        int height, int* offsets, int jpegQuality) {
++    jpeg_compress_struct    cinfo;
++    skjpeg_error_mgr        sk_err;
++    skjpeg_destination_mgr  sk_wstream(stream);
++
++    cinfo.err = jpeg_std_error(&sk_err);
++    sk_err.error_exit = skjpeg_error_exit;
++    if (setjmp(sk_err.fJmpBuf)) {
++        return false;
++    }
++    jpeg_create_compress(&cinfo);
++
++    cinfo.dest = &sk_wstream;
++
++    setJpegCompressStruct(&cinfo, width, height, jpegQuality);
++
++    jpeg_start_compress(&cinfo, TRUE);
++
++    compress(&cinfo, (uint8_t*) inYuv, offsets);
++
++    jpeg_finish_compress(&cinfo);
++
++    return true;
++}
++
++void YuvToJpegEncoder::setJpegCompressStruct(jpeg_compress_struct* cinfo,
++        int width, int height, int quality) {
++    cinfo->image_width = width;
++    cinfo->image_height = height;
++    cinfo->input_components = 3;
++    cinfo->in_color_space = JCS_YCbCr;
++    jpeg_set_defaults(cinfo);
++
++    jpeg_set_quality(cinfo, quality, TRUE);
++    jpeg_set_colorspace(cinfo, JCS_YCbCr);
++    cinfo->raw_data_in = TRUE;
++    cinfo->dct_method = JDCT_IFAST;
++    configSamplingFactors(cinfo);
++}
++
++///////////////////////////////////////////////////////////////////
++Yuv420SpToJpegEncoder::Yuv420SpToJpegEncoder(int* strides) :
++        YuvToJpegEncoder(strides) {
++    fNumPlanes = 2;
++}
++
++void Yuv420SpToJpegEncoder::compress(jpeg_compress_struct* cinfo,
++        uint8_t* yuv, int* offsets) {
++    SkDebugf("onFlyCompress");
++    JSAMPROW y[16];
++    JSAMPROW cb[8];
++    JSAMPROW cr[8];
++    JSAMPARRAY planes[3];
++    planes[0] = y;
++    planes[1] = cb;
++    planes[2] = cr;
++
++    int width = cinfo->image_width;
++    int height = cinfo->image_height;
++    uint8_t* yPlanar = yuv + offsets[0];
++    uint8_t* vuPlanar = yuv + offsets[1]; //width * height;
++    uint8_t* uRows = new uint8_t [8 * (width >> 1)];
++    uint8_t* vRows = new uint8_t [8 * (width >> 1)];
++
++
++    // process 16 lines of Y and 8 lines of U/V each time.
++    while (cinfo->next_scanline < cinfo->image_height) {
++        //deitnerleave u and v
++        deinterleave(vuPlanar, uRows, vRows, cinfo->next_scanline, width, height);
++
++        // Jpeg library ignores the rows whose indices are greater than height.
++        for (int i = 0; i < 16; i++) {
++            // y row
++            y[i] = yPlanar + (cinfo->next_scanline + i) * fStrides[0];
++
++            // construct u row and v row
++            if ((i & 1) == 0) {
++                // height and width are both halved because of downsampling
++                int offset = (i >> 1) * (width >> 1);
++                cb[i/2] = uRows + offset;
++                cr[i/2] = vRows + offset;
++            }
++          }
++        jpeg_write_raw_data(cinfo, planes, 16);
++    }
++    delete [] uRows;
++    delete [] vRows;
++
++}
++
++void Yuv420SpToJpegEncoder::deinterleave(uint8_t* vuPlanar, uint8_t* uRows,
++        uint8_t* vRows, int rowIndex, int width, int height) {
++    int numRows = (height - rowIndex) / 2;
++    if (numRows > 8) numRows = 8;
++    for (int row = 0; row < numRows; ++row) {
++        int offset = ((rowIndex >> 1) + row) * fStrides[1];
++        uint8_t* vu = vuPlanar + offset;
++        for (int i = 0; i < (width >> 1); ++i) {
++            int index = row * (width >> 1) + i;
++            uRows[index] = vu[1];
++            vRows[index] = vu[0];
++            vu += 2;
++        }
++    }
++}
++
++void Yuv420SpToJpegEncoder::configSamplingFactors(jpeg_compress_struct* cinfo) {
++    // cb and cr are horizontally downsampled and vertically downsampled as well.
++    cinfo->comp_info[0].h_samp_factor = 2;
++    cinfo->comp_info[0].v_samp_factor = 2;
++    cinfo->comp_info[1].h_samp_factor = 1;
++    cinfo->comp_info[1].v_samp_factor = 1;
++    cinfo->comp_info[2].h_samp_factor = 1;
++    cinfo->comp_info[2].v_samp_factor = 1;
++}
++
++///////////////////////////////////////////////////////////////////////////////
++Yuv422IToJpegEncoder::Yuv422IToJpegEncoder(int* strides) :
++        YuvToJpegEncoder(strides) {
++    fNumPlanes = 1;
++}
++
++void Yuv422IToJpegEncoder::compress(jpeg_compress_struct* cinfo,
++        uint8_t* yuv, int* offsets) {
++    SkDebugf("onFlyCompress_422");
++    JSAMPROW y[16];
++    JSAMPROW cb[16];
++    JSAMPROW cr[16];
++    JSAMPARRAY planes[3];
++    planes[0] = y;
++    planes[1] = cb;
++    planes[2] = cr;
++
++    int width = cinfo->image_width;
++    int height = cinfo->image_height;
++    uint8_t* yRows = new uint8_t [16 * width];
++    uint8_t* uRows = new uint8_t [16 * (width >> 1)];
++    uint8_t* vRows = new uint8_t [16 * (width >> 1)];
++
++    uint8_t* yuvOffset = yuv + offsets[0];
++
++    // process 16 lines of Y and 16 lines of U/V each time.
++    while (cinfo->next_scanline < cinfo->image_height) {
++        deinterleave(yuvOffset, yRows, uRows, vRows, cinfo->next_scanline, width, height);
++
++        // Jpeg library ignores the rows whose indices are greater than height.
++        for (int i = 0; i < 16; i++) {
++            // y row
++            y[i] = yRows + i * width;
++
++            // construct u row and v row
++            // width is halved because of downsampling
++            int offset = i * (width >> 1);
++            cb[i] = uRows + offset;
++            cr[i] = vRows + offset;
++        }
++
++        jpeg_write_raw_data(cinfo, planes, 16);
++    }
++    delete [] yRows;
++    delete [] uRows;
++    delete [] vRows;
++}
++
++
++void Yuv422IToJpegEncoder::deinterleave(uint8_t* yuv, uint8_t* yRows, uint8_t* uRows,
++        uint8_t* vRows, int rowIndex, int width, int height) {
++    int numRows = height - rowIndex;
++    if (numRows > 16) numRows = 16;
++    for (int row = 0; row < numRows; ++row) {
++        uint8_t* yuvSeg = yuv + (rowIndex + row) * fStrides[0];
++        for (int i = 0; i < (width >> 1); ++i) {
++            int indexY = row * width + (i << 1);
++            int indexU = row * (width >> 1) + i;
++            yRows[indexY] = yuvSeg[0];
++            yRows[indexY + 1] = yuvSeg[2];
++            uRows[indexU] = yuvSeg[1];
++            vRows[indexU] = yuvSeg[3];
++            yuvSeg += 4;
++        }
++    }
++}
++
++void Yuv422IToJpegEncoder::configSamplingFactors(jpeg_compress_struct* cinfo) {
++    // cb and cr are horizontally downsampled and vertically downsampled as well.
++    cinfo->comp_info[0].h_samp_factor = 2;
++    cinfo->comp_info[0].v_samp_factor = 2;
++    cinfo->comp_info[1].h_samp_factor = 1;
++    cinfo->comp_info[1].v_samp_factor = 2;
++    cinfo->comp_info[2].h_samp_factor = 1;
++    cinfo->comp_info[2].v_samp_factor = 2;
++}
++///////////////////////////////////////////////////////////////////////////////
++
++static jboolean YuvImage_compressToJpeg(JNIEnv* env, jobject, jbyteArray inYuv,
++        int format, int width, int height, jintArray offsets,
++        jintArray strides, int jpegQuality, jobject jstream,
++        jbyteArray jstorage) {
++    jbyte* yuv = env->GetByteArrayElements(inYuv, NULL);
++    SkWStream* strm = CreateJavaOutputStreamAdaptor(env, jstream, jstorage);
++
++    jint* imgOffsets = env->GetIntArrayElements(offsets, NULL);
++    jint* imgStrides = env->GetIntArrayElements(strides, NULL);
++    YuvToJpegEncoder* encoder = YuvToJpegEncoder::create(format, imgStrides);
++    if (encoder == NULL) {
++        return false;
++    }
++    encoder->encode(strm, yuv, width, height, imgOffsets, jpegQuality);
++
++    delete encoder;
++    env->ReleaseByteArrayElements(inYuv, yuv, 0);
++    env->ReleaseIntArrayElements(offsets, imgOffsets, 0);
++    env->ReleaseIntArrayElements(strides, imgStrides, 0);
++    return true;
++}
++///////////////////////////////////////////////////////////////////////////////
++/*
++#include <android_runtime/AndroidRuntime.h>
++
++static JNINativeMethod gYuvImageMethods[] = {
++    {   "nativeCompressToJpeg",  "([BIII[I[IILjava/io/OutputStream;[B)Z",
++        (void*)YuvImage_compressToJpeg }
++};
++
++#define kClassPathName  "android/graphics/YuvImage"
++
++int register_android_graphics_YuvImage(JNIEnv* env)
++{
++    return android::AndroidRuntime::registerNativeMethods(env, kClassPathName,
++            gYuvImageMethods, SK_ARRAY_COUNT(gYuvImageMethods));
++}
++*/
+diff --git a/libcamera2/binary/camera.mk b/libcamera2/binary/camera.mk
+index 5caef34..ff91d90 100644
+--- a/libcamera2/binary/camera.mk
++++ b/libcamera2/binary/camera.mk
+@@ -1,4 +1,4 @@
+-LOCAL_PATH := hardware/ingenic/xb4780/libcamera2/binary
++LOCAL_PATH := out/target/product/npm801/system/lib/hw
+ 
+ PRODUCT_COPY_FILES += \
+-	$(LOCAL_PATH)/camera.xb4780.so:system/lib/hw/camera.xb4780.so
+\ No newline at end of file
++	$(LOCAL_PATH)/camera.xb4780.so:system/lib/hw/camera.xb4780.so
+diff --git a/libcamera2/include/CameraCompressor.h b/libcamera2/include/CameraCompressor.h
+index c0e62e4..c003b72 100644
+--- a/libcamera2/include/CameraCompressor.h
++++ b/libcamera2/include/CameraCompressor.h
+@@ -19,7 +19,7 @@
+ #ifdef CAMERA_VERSION2
+ #include "JZCameraParameters2.h"
+ #endif
+-#include <YuvToJpegEncoder.h>
++#include "YuvToJpegEncoder.h"
+ 
+ namespace android {
+ 
+diff --git a/libcamera2/include/CameraHal1.h b/libcamera2/include/CameraHal1.h
+index ec12829..d820bc8 100644
+--- a/libcamera2/include/CameraHal1.h
++++ b/libcamera2/include/CameraHal1.h
+@@ -15,7 +15,6 @@
+ 
+ #include "CameraHalCommon.h"
+ #include "CameraColorConvert.h"
+-#include "CameraFaceDetect.h"
+ 
+ //#define USE_X2D
+ #define X2D_NAME "/dev/x2d"
+@@ -222,8 +221,6 @@ namespace android {
+         void hardCompressJpeg(void);
+         status_t fillCurrentFrame(uint8_t* img,buffer_handle_t* buffer);
+         status_t convertCurrentFrameToJpeg(camera_memory_t** jpeg_buff);
+-        status_t softFaceDetectStart(int32_t detect_type);
+-        status_t softFaceDetectStop(void);
+         status_t do_takePictureWithPreview(void);
+         status_t do_takePicture(void);
+         status_t completeTakePicture(void);
+diff --git a/libcamera2/include/CameraHal2.h b/libcamera2/include/CameraHal2.h
+index 5eec7c5..51de2e4 100644
+--- a/libcamera2/include/CameraHal2.h
++++ b/libcamera2/include/CameraHal2.h
+@@ -15,7 +15,6 @@
+ 
+ #include "CameraHalCommon.h"
+ #include "CameraColorConvert.h"
+-#include "CameraFaceDetect.h"
+ 
+ //#define USE_X2D
+ #define X2D_NAME "/dev/x2d"
+diff --git a/libcamera2/include/YuvToJpegEncoder.h b/libcamera2/include/YuvToJpegEncoder.h
+new file mode 100644
+index 0000000..0d418ed
+--- /dev/null
++++ b/libcamera2/include/YuvToJpegEncoder.h
+@@ -0,0 +1,74 @@
++#ifndef YuvToJpegEncoder_DEFINED
++#define YuvToJpegEncoder_DEFINED
++
++#include "SkTypes.h"
++#include "SkStream.h"
++extern "C" {
++    #include "jpeglib.h"
++    #include "jerror.h"
++}
++
++class YuvToJpegEncoder {
++public:
++    /** Create an encoder based on the YUV format.
++     *
++     *  @param pixelFormat The yuv pixel format as defined in ui/PixelFormat.h.
++     *  @param strides The number of row bytes in each image plane.
++     *  @return an encoder based on the pixelFormat.
++     */
++    static YuvToJpegEncoder* create(int pixelFormat, int* strides);
++
++    YuvToJpegEncoder(int* strides);
++
++    /** Encode YUV data to jpeg,  which is output to a stream.
++     *
++     *  @param stream The jpeg output stream.
++     *  @param inYuv The input yuv data.
++     *  @param width Width of the the Yuv data in terms of pixels.
++     *  @param height Height of the Yuv data in terms of pixels.
++     *  @param offsets The offsets in each image plane with respect to inYuv.
++     *  @param jpegQuality Picture quality in [0, 100].
++     *  @return true if successfully compressed the stream.
++     */
++    bool encode(SkWStream* stream,  void* inYuv, int width,
++           int height, int* offsets, int jpegQuality);
++
++    virtual ~YuvToJpegEncoder() {}
++
++protected:
++    int fNumPlanes;
++    int* fStrides;
++    void setJpegCompressStruct(jpeg_compress_struct* cinfo, int width,
++            int height, int quality);
++    virtual void configSamplingFactors(jpeg_compress_struct* cinfo) = 0;
++    virtual void compress(jpeg_compress_struct* cinfo,
++            uint8_t* yuv, int* offsets) = 0;
++};
++
++class Yuv420SpToJpegEncoder : public YuvToJpegEncoder {
++public:
++     Yuv420SpToJpegEncoder(int* strides);
++     virtual ~Yuv420SpToJpegEncoder() {}
++
++private:
++     void configSamplingFactors(jpeg_compress_struct* cinfo);
++     void deinterleaveYuv(uint8_t* yuv, int width, int height,
++            uint8_t*& yPlanar, uint8_t*& uPlanar, uint8_t*& vPlanar);
++     void deinterleave(uint8_t* vuPlanar, uint8_t* uRows, uint8_t* vRows,
++             int rowIndex, int width, int height);
++     void compress(jpeg_compress_struct* cinfo, uint8_t* yuv, int* offsets);
++};
++
++class Yuv422IToJpegEncoder : public YuvToJpegEncoder {
++public:
++    Yuv422IToJpegEncoder(int* strides);
++    virtual ~Yuv422IToJpegEncoder() {}
++
++private:
++    void configSamplingFactors(jpeg_compress_struct* cinfo);
++    void compress(jpeg_compress_struct* cinfo, uint8_t* yuv, int* offsets);
++    void deinterleave(uint8_t* yuv, uint8_t* yRows, uint8_t* uRows,
++            uint8_t* vRows, int rowIndex, int width, int height);
++};
++
++#endif
+-- 
+1.7.9.5
+

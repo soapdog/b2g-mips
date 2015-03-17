@@ -1,0 +1,24 @@
+From 36bc8c7ad7322e720128c40b834d7ff110e12445 Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <milan.jelisavcic@imgtec.com>
+Date: Tue, 27 Jan 2015 19:53:42 +0100
+Subject: [PATCH] [MIPS] Remove deadlock with AutoMutex.
+
+---
+ libcamera2/CameraHal1.cpp |    1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/libcamera2/CameraHal1.cpp b/libcamera2/CameraHal1.cpp
+index fc75437..e3b2590 100644
+--- a/libcamera2/CameraHal1.cpp
++++ b/libcamera2/CameraHal1.cpp
+@@ -800,7 +800,6 @@ namespace android{
+             {
+             case CAMERA_CMD_ENABLE_FOCUS_MOVE_MSG:
+                 bool enable = static_cast<bool>(arg1);
+-                AutoMutex lock(mlock);
+                 if (enable) {
+                     mMesgEnabled |= CAMERA_MSG_FOCUS_MOVE;
+                 } else {
+-- 
+1.7.9.5
+

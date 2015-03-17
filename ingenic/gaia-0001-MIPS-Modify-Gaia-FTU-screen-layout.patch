@@ -1,0 +1,27 @@
+From 67e5fe1a7dea191565440a087b9b15a2dccbb9ac Mon Sep 17 00:00:00 2001
+From: Nikola Veljkovic <nikola.veljkovic@imgtec.com>
+Date: Tue, 27 Jan 2015 10:40:50 +0100
+Subject: [PATCH] [MIPS] Modify Gaia FTU screen layout.
+
+---
+ shared/js/screen_layout.js |    4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/shared/js/screen_layout.js b/shared/js/screen_layout.js
+index e9ec4a9..34e1ccc 100644
+--- a/shared/js/screen_layout.js
++++ b/shared/js/screen_layout.js
+@@ -21,8 +21,8 @@ var ScreenLayout = {
+   defaultQueries: {
+     tiny: '(max-width: 767px)',
+     small: '(min-width: 768px) and (max-width: 991px)',
+-    medium: '(min-width: 992px) and (max-width: 1200px)',
+-    large: '(min-width: 1201px)',
++    medium: '(min-width: 992px) and (max-width: 1000px)',
++    large: '(min-width: 1001px)',
+     hardwareHomeButton: '(-moz-physical-home-button)'
+   },
+ 
+-- 
+1.7.9.5
+

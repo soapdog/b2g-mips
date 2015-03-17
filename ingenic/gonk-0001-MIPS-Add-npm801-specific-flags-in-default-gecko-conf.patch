@@ -1,0 +1,28 @@
+From b7bb620b7e6e30e1320cb107461a06ad8afd4f51 Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <Milan.Jelisavcic@imgtec.com>
+Date: Tue, 27 Jan 2015 15:09:56 +0100
+Subject: [PATCH] [MIPS] Add npm801 specific flags in default-gecko-config
+
+---
+ default-gecko-config | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/default-gecko-config b/default-gecko-config
+index 620830b..faebf38 100644
+--- a/default-gecko-config
++++ b/default-gecko-config
+@@ -17,6 +17,11 @@ ac_add_options --target=mips-linux-androideabi
+ ac_add_options --disable-content-sandbox
+ ac_add_options --disable-profiling
+ 
++if [ "$TARGET_PRODUCT" = "full_npm801" ]; then
++ac_add_options --disable-b2g-ril
++ac_add_options --disable-b2g-nfc
++fi
++
+ fi
+ fi
+ fi
+-- 
+2.2.2
+

@@ -1,0 +1,242 @@
+Porting Firefox OS v2.0 on MIPS Architecture
+=============================================
+
+This is a manual for building Firefox OS V2.0 for MIPS architecture emulator.
+The manual is written for 64bit Debian Wheezy and 64bit Ubuntu 12.04 operating
+systems.
+
+For more info and hardware requirements see:
+https://developer.mozilla.org/Firefox_OS/Firefox_OS_build_prerequisites#Requirements_for_Linux
+
+Preparing the Build Environment
+--------------------------------
+* Check allowed foreign architectures
+  Use following command to check if i386 is already included:
+
+dpkg --print-foreign-architectures
+
+  If i386 is not in the output list, execute following line:
+
+sudo dpkg --add-architecture i386
+
+* Install prerequisites
+  Make sure you have all of the following packages installed:
+
+sudo apt-get install bison bzip2 ccache curl flex gawk git make patch zip
+sudo apt-get install build-essential autoconf2.13 g++-multilib libc6-dev
+sudo apt-get install python python-markdown
+sudo apt-get install libxml2-utils libreadline6 gnupg
+sudo apt-get install libncurses5-dev:i386 zlib1g-dev:i386 ia32-libs lib32z1-dev
+sudo apt-get install libxrender1 libdbus-glib-1-2 libgtk2.0-0 ia32-libs-gtk
+sudo apt-get install libgl1-mesa-dev libglapi-mesa:i386 libgl1-mesa-glx:i386 libgl1-mesa-dri:i386
+
+  Install python-dev library. For Debian systems use version 2.6, and for Ubuntu
+  use 2.7.
+
+  - For Debian use:
+
+sudo apt-get install python2.6-dev
+
+  - For Ubuntu use:
+
+sudo apt-get install python2.7-dev
+
+  Install and setup Mesa:
+
+sudo apt-get install x11proto-core-dev libx11-dev libx11-dev:i386
+sudo ln -s /usr/lib/i386-linux-gnu/mesa/libGL.so.1 /usr/lib/i386-linux-gnu/libGL.so
+
+ Install Java:
+
+sudo update-java-alternatives -s java-6-sun
+wget --header "Cookie: gpw_e24=http%3A%2F%2Fwww.oracle.com" -O jdk-6u45-linux-x64.bin http://download.oracle.com/otn-pub/java/jdk/6u45-b06/jdk-6u45-linux-x64.bin
+sudo mkdir -p /usr/lib/jvm
+sudo mv jre1.6.0_45 /usr/lib/jvm/
+sudo update-alternatives --install "/usr/bin/java" "java" "/usr/lib/jvm/jre1.6.0_45/bin/java" 1
+
+* Setup GCC
+  Version 4.6 of gcc compiler is required for building the Firefox OS. If
+  different version is already installed on the system we need to install 4.6
+  version, too:
+
+sudo apt-get install gcc-4.6 g++-4.6 gcc-4.6-multilib g++-4.6-multilib
+sudo ln -sf gcc-4.6 /usr/bin/gcc
+sudo ln -sf g++-4.6 /usr/bin/g++
+
+Checking out Source Code
+-------------------------
+* Prepare for code checkout
+  Position to desired folder. This folder will contain both the source code and
+  the output folders.
+
+cd /workarea/fxos-mips-20150901
+
+  Untar files from patches.tar archive:
+
+tar -xf <path_to>/ffos-mips-20140901.tar
+
+  Clone the b2g manifest repository:
+
+git clone https://github.com/mozilla-b2g/b2g-manifest.git -b v2.0
+
+  Add the new manifest files (emulator-mips-jb.xml and ingenic-npm801.xml).
+  Manifest files contain a snapshot descriptions of B2G project for the 1st of
+  September 2014.
+
+cd b2g-manifest/
+git am ../patches/emulator/manifest-MIPS-emulator.patch
+git am ../patches/ingenic/manifest-MIPS-npm801-device.patch
+cd ../
+
+  Checkout B2G tools from github.com:
+
+git clone https://github.com/mozilla-b2g/B2G.git
+cd ./B2G
+git checkout f0a118cc40ead852710bf409c3847d73250f403b
+
+  Config.sh script is used to call repo command with predefined parameters. We
+  need to patch the script, so it can work with the newly added manifest files:
+
+export B2G_HOME=`pwd`
+git am $B2G_HOME/../patches/emulator/config-*.patch
+git am $B2G_HOME/../patches/ingenic/config-*.patch
+
+
+Adding MIPS Support for Emulator
+---------------------------------
+
+* Checkout the code
+  Checkout the code for Firefox OS. Note: this command will take few hours to
+  execute. Actual time will depend on Internet connection.
+
+cd $B2G_HOME
+GITREPO="`pwd`/../b2g-manifest" BRANCH=v2.0 ./config.sh emulator-mips-jb
+
+git am $B2G_HOME/../patches/emulator/b2g-*.patch
+
+cd $B2G_HOME/gonk-misc
+git am $B2G_HOME/../patches/emulator/gonk-*.patch
+
+cd $B2G_HOME/bionic
+git am $B2G_HOME/../patches/emulator/bionic-*.patch
+
+cd $B2G_HOME/device/generic/goldfish
+git am $B2G_HOME/../patches/emulator/goldfish-*.patch
+
+cd $B2G_HOME/gecko
+git am --whitespace=nowarn $B2G_HOME/../patches/emulator/gecko-*.patch
+
+cd $B2G_HOME/external/qemu
+git am $B2G_HOME/../patches/emulator/qemu-*.patch
+
+cd $B2G_HOME
+
+./build.sh
+
+./run-emulator.sh
+
+
+Adding MIPS Support for Ingenic tablet
+---------------------------------------
+
+* Checkout the code
+  Checkout the code for Firefox OS. Note: this command will take few hours to
+  execute. Actual time will depend on Internet connection.
+
+cd $B2G_HOME
+GITREPO="`pwd`/../b2g-manifest" BRANCH=v2.0 ./config.sh ingenic-npm801
+
+  NOTE: All patches for emulator build must be applied first before proceeding
+  with further instructions for tablet build.
+
+cd $B2G_HOME
+git am $B2G_HOME/../patches/ingenic/b2g-*.patch
+
+cd $B2G_HOME/external/bluetooth/bluedroid
+git am $B2G_HOME/../patches/ingenic/bluedroid-*.patch
+
+cd $B2G_HOME/build
+git am $B2G_HOME/../patches/ingenic/build-*.patch
+
+cd $B2G_HOME/device/ingenic/npm801
+git am $B2G_HOME/../patches/ingenic/device-ingenic-*.patch
+
+cd $B2G_HOME/device/generic/goldfish
+git am $B2G_HOME/../patches/ingenic/device-goldfish-*.patch
+
+cd $B2G_HOME/gaia
+git am $B2G_HOME/../patches/ingenic/gaia-*.patch
+
+cd $B2G_HOME/gecko
+git am $B2G_HOME/../patches/ingenic/gecko-*.patch
+
+cd $B2G_HOME/gonk-misc
+git am $B2G_HOME/../patches/ingenic/gonk-*.patch
+
+cd $B2G_HOME/hardware/ingenic/xb4780
+git am $B2G_HOME/../patches/ingenic/hardware-ingenic-*.patch
+
+cd $B2G_HOME
+./build.sh
+
+Flashing image files onto device
+---------------------------------
+
+  NOTE: If tablet does not have a new fastboot compatible X-boot, refer first to
+  instructions given at end of this section. Afterwards, return to instructions
+  at beginning of this section.
+
+* Flashing images onto a tablet.
+
+  First, plug-in USB and charger cable into Ingenic tablet. Press and hold back
+  button while pressing reset. Wait until device starts fastboot mode and then
+  release back button.
+
+* Change user rights.
+
+sudo su
+
+source build/envsetup.sh 
+lunch full_npm801-userdebug
+
+* Check if fastboot detects device properly.
+
+fastboot devices
+
+  Return message from fastboot should be this:
+  > Google, Inc		fastboot
+
+* Flashing images onto a tablet
+  IF device is properly recognised, proceed with flashing images onto a tablet.
+
+fastboot -w flashall
+
+* After flashing is complete, tablet should automatically restart and boot-up
+  Firefox OS.
+
+----------------------
+Update the bootloader
+----------------------
+
+  !!!NOTE!!!: Needs to be done ONLY once, it installs a new fastboot compatible
+  X-boot.
+
+* Connect the device to PC by USB cable and plug charger into the device.
+
+* Put device into USB-BOOT mode by pressing both Vol+ and reset at the same time
+  and keeping Vol+ pressed for at least 2 seconds after reset is released.
+
+* Note that the screen is blank in this mode.
+
+* Check if the device entered USB boot mode correctly using 'lsusb'.
+
+  'xxxx:4780' is the target.
+
+cd $B2G_HOME/device/ingenic/npm801/ingenic-xboot-updater/
+
+* This step will erase all data on the device and just update the bootloader.
+
+sudo ./ingenic-xboot-updater --boot=x-boot-nand.bin
+
+* Now, after installing new fastboot, refer to instructions at beginning of this
+  section to proceed with flashing Firefox OS images on device.

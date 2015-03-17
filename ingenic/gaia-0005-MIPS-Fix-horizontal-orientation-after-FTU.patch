@@ -1,0 +1,32 @@
+From 04e44ebe21bdb6ef66d82b76b84a64e4593ee621 Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <milan.jelisavcic@imgtec.com>
+Date: Tue, 27 Jan 2015 11:40:32 +0100
+Subject: [PATCH] [MIPS] Fix horizontal orientation after FTU.
+
+---
+ apps/ftu/js/tutorial.js |    9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/apps/ftu/js/tutorial.js b/apps/ftu/js/tutorial.js
+index 61e6357..d329f9c 100644
+--- a/apps/ftu/js/tutorial.js
++++ b/apps/ftu/js/tutorial.js
+@@ -179,7 +179,14 @@
+ 
+       // homescreen notification is out of band and neednt block
+       // the other init steps
+-      notifyHomescreenApp();
++      var req = navigator.mozSettings.createLock()
++                .get('homescreen.manifestURL');
++      req.onsuccess = function(){
++        var url = req.result['homescreen.manifestURL'];
++        if (url === 'app://verticalhome.gaiamobile.org/manifest.webapp') {
++          notifyHomescreenApp();
++        }
++      };
+ 
+       initTasks.next();
+     },
+-- 
+1.7.9.5
+

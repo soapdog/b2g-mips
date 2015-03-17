@@ -1,0 +1,57 @@
+From ca7a5995fe0d8bf71461f4be676e598d52e03338 Mon Sep 17 00:00:00 2001
+From: Lazar Trsic <lazar.trsic@imgtec.com>
+Date: Tue, 27 Jan 2015 10:36:10 +0100
+Subject: [PATCH] [MIPS] Add mips32r2 flag for mips builds.
+
+---
+ configure.in        |   10 ++++++++++
+ js/src/configure.in |   12 ++++++++++++
+ 2 files changed, 22 insertions(+)
+
+diff --git a/configure.in b/configure.in
+index 83cd103..6528ed2 100644
+--- a/configure.in
++++ b/configure.in
+@@ -1212,6 +1212,16 @@ dnl Configure platform-specific CPU architecture compiler options.
+ dnl ==============================================================
+ MOZ_ARCH_OPTS
+ 
++
++dnl Add mips32r2 flag for mips builds
++dnl ==============================================================
++case "$OS_TEST" in
++  mips|mipsel)
++    CFLAGS="$CFLAGS -mips32r2"
++    CXXFLAGS="$CXXFLAGS -mips32r2"
++    ASFLAGS="$ASFLAGS -mips32r2"
++esac
++
+ dnl =================================================================
+ dnl Set up and test static assertion macros used to avoid AC_TRY_RUN,
+ dnl which is bad when cross compiling.
+diff --git a/js/src/configure.in b/js/src/configure.in
+index 054f0ad..28b1fca 100644
+--- a/js/src/configure.in
++++ b/js/src/configure.in
+@@ -1004,6 +1004,18 @@ dnl Configure platform-specific CPU architecture compiler options.
+ dnl ==============================================================
+ MOZ_ARCH_OPTS
+ 
++
++dnl Add mips32r2 flag for mips builds
++dnl ==============================================================
++case "$OS_TEST" in
++  mips|mipsel)
++    CFLAGS="$CFLAGS -mips32r2"
++    CXXFLAGS="$CXXFLAGS -mips32r2"
++    ASFLAGS="$ASFLAGS -mips32r2"
++esac
++
++
++
+ dnl =================================================================
+ dnl Set up and test static assertion macros used to avoid AC_TRY_RUN,
+ dnl which is bad when cross compiling.
+-- 
+1.7.9.5
+

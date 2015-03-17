@@ -1,0 +1,47 @@
+From 83aa775e26fd168fac4246e0fb213bbe2d2c2547 Mon Sep 17 00:00:00 2001
+From: Milan Jelisavcic <Milan.Jelisavcic@imgtec.com>
+Date: Mon, 26 Jan 2015 17:27:52 +0100
+Subject: [PATCH] Add mips support in default_gecko_config.
+
+---
+ default-gecko-config | 15 +++++++++++++--
+ 1 file changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/default-gecko-config b/default-gecko-config
+index d36f083..620830b 100644
+--- a/default-gecko-config
++++ b/default-gecko-config
+@@ -9,9 +9,18 @@ mk_add_options MOZ_OBJDIR="$GECKO_OBJDIR"
+ 
+ if [ "$TARGET_ARCH" = "x86" ]; then
+ ac_add_options --target=i686-android-linux
+-else
++else if [ "$TARGET_ARCH" = "arm" ]; then
+ ac_add_options --target=arm-linux-androideabi
++else if [ "$TARGET_ARCH" = "mips" ]; then
++ac_add_options --target=mips-linux-androideabi
++
++ac_add_options --disable-content-sandbox
++ac_add_options --disable-profiling
++
++fi
+ fi
++fi
++
+ ac_add_options --with-gonk="$GONK_PATH"
+ ac_add_options --with-gonk-toolchain-prefix="$TARGET_TOOLS_PREFIX"
+ 
+@@ -74,7 +83,9 @@ ac_add_options --disable-elf-hack
+ fi
+ 
+ if [ "$TARGET_BUILD_VARIANT" = eng ]; then
+-  ac_add_options --enable-content-sandbox-reporter
++  if [ "$TARGET_ARCH" != "mips" ]; then
++    ac_add_options --enable-content-sandbox-reporter
++  fi
+   # bug 979947 - Engineering builds should have
+   # the profiler enabled by default
+   ac_add_options --enable-profiling
+-- 
+2.2.2
+

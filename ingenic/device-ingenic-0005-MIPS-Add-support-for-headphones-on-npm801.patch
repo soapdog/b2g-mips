@@ -1,0 +1,25 @@
+From a0b178764e308c8e75c928a9bb26291ba4067422 Mon Sep 17 00:00:00 2001
+From: Lazar Trsic <lazar.trsic@imgtec.com>
+Date: Tue, 27 Jan 2015 20:13:13 +0100
+Subject: [PATCH] [MIPS] Add support for headphones on npm801.
+
+---
+ config/audio_policy.conf | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/config/audio_policy.conf b/config/audio_policy.conf
+index 2e9957d..f701537 100644
+--- a/config/audio_policy.conf
++++ b/config/audio_policy.conf
+@@ -26,7 +26,7 @@ audio_hw_modules {
+         sampling_rates 44100
+         channel_masks AUDIO_CHANNEL_OUT_STEREO
+         formats AUDIO_FORMAT_PCM_16_BIT
+-        devices AUDIO_DEVICE_OUT_SPEAKER
++        devices AUDIO_DEVICE_OUT_SPEAKER|AUDIO_DEVICE_OUT_WIRED_HEADSET|AUDIO_DEVICE_OUT_WIRED_HEADPHONE|AUDIO_DEVICE_OUT_ALL_SCO
+         flags AUDIO_OUTPUT_FLAG_PRIMARY
+       }
+ 
+-- 
+2.2.2
+
